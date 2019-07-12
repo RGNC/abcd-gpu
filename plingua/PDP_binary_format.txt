@@ -1,0 +1,173 @@
+################################################################################
+#
+#    ABCD-GPU: Simulating Population Dynamics P systems on the GPU, by DCBA 
+#    ABCD-GPU is a subproject of PMCGPU (Parallel simulators for Membrane 
+#                                        Computing on the GPU)   
+# 
+#    Copyright (c) 2015  Research Group on Natural Computing, Universidad de Sevilla
+#    			 Dpto. Ciencias de la Computación e Inteligencia Artificial
+#    			 Escuela Técnica Superior de Ingeniería Informática,
+#    			 Avda. Reina Mercedes s/n, 41012 Sevilla (Spain)
+#
+#    Author: Miguel Ángel Martínez-del-Amor
+#    
+#    This file is part of ABCD-GPU.
+#  
+#    ABCD-GPU is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    ABCD-GPU is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with ABCD-GPU.  If not, see <http://www.gnu.org/licenses/>. */
+################################################################################
+
+
+####################################################################
+# Binary file format for the input of the simulator: PDP systems
+# (revision 16-09-2014). The encoded numbers must be in big-endian
+
+
+# Header (4 Bytes):
+0xAF
+0x12
+0xFA
+0x21 (Last Byte: 4 bits for P system model, 4 bits for file version)
+
+# Sub-header (3 Bytes):
+Bit-accuracy mask (2 Bytes, 2 bits for each number N (meaning a precision
+of 2^N Bytes)), for:
+- Num. of objects (2 bits (meaning 2^0 -- 2^2 Bytes))
+- Num. of environments (2 bits (meaning 2^0 -- 2^2 Bytes))
+- Num. of membranes (2 bits (meaning 2^0 -- 2^2 Bytes))
+- Num. of skeleton rules (2 bits (meaning 2^0 -- 2^2 Bytes))
+- Num. of environment rules (2 bits (meaning 2^0 -- 2^2 Bytes))
+- Object multiplicities in rules (2 bits (meaning 2^0 -- 2^2 Bytes))
+- Initial num. of objects in membranes (2 bits (meaning 2^0 -- 2^2 Bytes))
+- Multiplicities in initial multisets (2 bits (meaning 2^0 -- 2^2 Bytes))
+Listing char strings (1 Byte, 5 bits reserved + 3 bits), for:
+- Reserved (5 bits)
+- Alphabet (1 bit)
+- Environments (1 bit)
+- Membranes (1 bit)
+
+
+#---- Global sizes
+
+# Alphabet
+Number of objects in the alphabet (1-4 Bytes)
+## For each object (implicit identificator given by the order)
+Char string representing the object (finished by '\0')
+
+
+# Environments
+Number of environments, m parameter (1-4 Bytes)
+## For each environment (implicit identificator given by the order)
+Char string representing the environment (finished by '\0')
+
+
+# Membranes (including the environment space as a membrane)
+Number of membranes, q parameter + 1 (1-4 Bytes)
+## For each membrane (implicit identificator given by the order, 
+                      from 1 (0 denotes environment))
+Parent membrane ID (1-4 Bytes)
+Char string representing the label (finished by '\0')
+
+
+# Number of rule blocks
+Number of rule blocks of Pi/Skeleton (1-4 Bytes)
+Number of rule blocks of the environments (1-4 Bytes)
+
+
+#---- Information of rule blocks: number rules and length LHS
+
+# For each rule block of Pi (skeleton)
+Information Byte (1 Byte: 2 bits for precision of multiplicity in L/RHS 
+                  (2^0 -- 2^2 Bytes) + 1 bit precision number of objects
+                  in LHS (2^0 -- 2^1 Bytes) + 1 bit precision number of 
+                  objects in RHS (2^0 -- 2^1 Bytes) + 2 bits precision 
+                  number of rules in the block (2^0 -- 2^2 Bytes) + 1 bit
+                  don't show probability for each environment + 1 bit show
+                  parent membrane)
+Number of rules inside the block (1-4 Bytes)
+Number of objects in LHS; that is, length U + length V (1-2 Bytes)
+Active Membrane (1-4 Bytes)
+# If show parent membrane flag is active (deprecated)
+Parent Membrane (1-4 Bytes, this is deprecated)
+Charges (1 Byte: 2 bits for alpha, 2 bits for alpha', 4 bits reserved,
+         using 0=0, +=1, -=2)
+
+# For each rule block of environment
+Information Byte (1 Byte: 2 bits for precision of multiplicity in LHS 
+                  (2^0 -- 2^2 Bytes) + 1 bit precision number of objects
+                  in LHS (2^0 -- 2^1 Bytes) + 1 bit precision number of 
+                  objects in RHS (2^0 -- 2^1 Bytes) + 2 bits precision of
+                  number of rules in the block (2^0 -- 2^2 Bytes) + 1 bit
+                  probability for each environment + 1 bit show parent
+                  membrane)
+Number of rules inside the block (1-2 Bytes)
+Environment (1-4 Bytes)
+
+
+#---- Information of rule blocks: length RHS, probabilities and LHS
+
+# For each rule block of Pi
+## For each rule
+Number of objects in RHS; that is, length U' + length V' (1-2 Bytes)
+### For each environment
+Probability first 4 decimals (prob*10000) (2 Bytes)
+## For LHS U: multiset in the LHS in the parent membrane U [ V ]_h^a
+Number of objects in U (1-2 Bytes)
+### For each object
+Object ID (1-4 Bytes)
+Multiplicity (1-4 Bytes)
+## For LHS V: multiset in the LHS in the active membrane U [ V ]_h^a
+Number of objects in V (1-2 Bytes)
+### For each object
+Object ID (1-4 Bytes)
+Multiplicity (1-4 Bytes)
+
+# For each rule block of environment
+Object in LHS (1-4 Bytes)
+## For each rule
+Number of objects (involved environments) in RHS (1-2 Bytes)
+Probability first 4 decimals (prob*10000) (2 Bytes)
+
+
+#---- Information of rule blocks: RHS
+
+# For each rule block of Pi
+## For each rule
+### For RHS U': multiset in the RHS in the parent membrane U' [ V' ]_h^a'
+Number of objects in U' (1-2 Bytes)
+#### For each object
+Object ID (1-4 Bytes)
+Multiplicity (1-4 Bytes)
+### For RHS V': multiset in the RHS in the active membrane U' [ V' ]_h^a'
+Number of objects in V' (1-2 Bytes)
+#### For each object
+Object ID (1-4 Bytes)
+Multiplicity (1-4 Bytes)
+
+# For each rule block of environment
+## For each rule
+#### For each object in RHS
+Object ID (1-4 Bytes)
+Environment (1-4 Bytes)
+
+
+#---- Initial multisets and sekeleton states
+
+# For each environment
+## For each membrane (membrane 0 for environment)
+Charge (1 Byte: 2 bits, 6 bits reserved, using 0=0, +=1, -=2)
+Number of different objects in the membrane (1-4 Bytes)
+## For each object:
+Object ID (1-4 Bytes)
+Multiplicity (1-4 Bytes)
+

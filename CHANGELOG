@@ -1,0 +1,24 @@
+Version 1.0 beta (20/07/2015):
+- Defined a binary format for input files, latest revision in 16-09-2014.
+- Input module for reading binary files with format of revision 16-09-2014.
+- Output module for generating CSV files from the simulations.
+- Added the new options to the command line syntax, such as the cycles (transition steps for a cycle).
+- Attached a branch of pLinguaCore to generate binary files from .pli.
+- Refined verbosity levels.
+- Fixed some problems with BINV algorithm for generating random binomial variates.
+- Fixed a problem when allocating space for rule applications (not enough space was given).
+- The GPU simulator for PDP systems was extended and analysed in the paper:
+M.A. Martínez-del-Amor, L.F. Macías-Ramos, L. Valencia-Cabrera, M.J. Pérez-
+Jiménez. Parallel simulation of Population Dynamics P systems: updates and
+roadmap. Natural Computing. Accepted.
+
+
+Version 0.8 beta (11/12/2012):
+- Simulation of PDP systems with the algorithm DCBA
+- Versions for CPUs with OpenMP and for GPUs with CUDA
+- Random generation of PDP systems, for performance testing
+- The GPU simulator for PDP systems was introduced and analysed in the paper:
+M.A. Martínez-del-Amor, I. Pérez-Hurtado, A. Gastalver-Rubio, A.C. Elster
+M.J. Pérez-Jiménez. Population Dynamics P systems on CUDA. Proceedings of
+the 10th Conference on Computational Methods in Systems Biology (CMSB2012),
+London, 2012. Lecture Notes in Bioinformatics, 7605 (2012), 247-266.

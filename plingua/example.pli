@@ -1,0 +1,51 @@
+ /*******************************************************************
+ *                                                                  *
+ * This P-Lingua file is free software: you can redistribute        *
+ * it and/or modify it under the terms of the GNU General           *
+ * Public License as published by the Free Software Foundation,     *
+ * either version 3 of the License, or (at your option) any         *
+ * later version.                                                   *
+ *                                                                  *
+ * This P-Lingua file is distributed in the hope that it will       *
+ * be useful, but WITHOUT ANY WARRANTY; without even the implied    *
+ * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. *
+ * See the GNU General Public License for more details.             *
+ *                                                                  *
+ * For more information about the license,                          * 
+ * see <http://www.gnu.org/licenses/>.                              *
+ *                                                                  *
+ * For more information about P-Lingua,                             *
+ * see <http://www.p-lingua.org/>                                   *
+ *                                                                  *
+ * Copyright (c) Research Group on Natural Computing                *
+ *               http://www.gcn.us.es                               *
+ *                                                                  *
+ ********************************************************************
+
+@model<probabilistic>
+
+def main()
+{
+	@mu = [ [ [ []'2 ]'1 ]'101,101
+              ]'global;
+
+	@ms(2,101) = a*90, b*72, c*66, d*30;
+	@ms(1,101) = a*60;
+	@ms(101,101) = b;
+
+	/* Checking accuracy */
+	/*B0*/  [ a*4, b*4, c*2 ]'2 --> e*2 []'2 :: 0.7;
+		[ a*4, b*4, c*2 ]'2 --> [ e*2 ]'2 :: 0.2;
+		[ a*4, b*4, c*2 ]'2 --> [ e, f ]'2 :: 0.1;
+
+	/*B1*/ 	[ a*4, d*1 ]'2 --> f*2 []'2 :: 1;
+
+	/*B2*/ 	[ b*5, d*2 ]'2 --> g*2 []'2 :: 1;
+
+	/* Checking filters */
+	/*B3*/ 	b -[ a*7 ]'1 --> -[ h*100 ]'1 :: 1;
+
+	/*B4*/ 	a*3 [ ]'2 --> [ e*3 ]'2 :: 1;
+
+	/*B5*/ 	a, b [ ]'2 --> -[ g*3 ]'2 :: 1;
+}
