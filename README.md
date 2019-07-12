@@ -43,10 +43,10 @@ The results show that with this real ecosystem model, phase 1 of DCBA is the bot
 
 ### 3.2. Installation ###
 
-  a. Install all the required packages from 2.1.
-  b. Inside the folder of CUDA SDK samples, create a new folder named 8_pmcgpu.
-  c. Extract the contents of files abcd-gpu-1.0b.tar.gz and counterslib.tar.gz inside this new folder.
-  d. Go to folder abcd-gpu-1.0b, and type "make". You should see the binary file inside the folder.
+  - a. Install all the required packages from 2.1.
+  - b. Inside the folder of CUDA SDK samples, create a new folder named 8_pmcgpu.
+  - c. Extract the contents of files abcd-gpu-1.0b.tar.gz and counterslib.tar.gz inside this new folder.
+  - d. Go to folder abcd-gpu-1.0b, and type "make". You should see the binary file inside the folder.
 
 ### 3.3 Usage ###
 
