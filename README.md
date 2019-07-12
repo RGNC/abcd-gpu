@@ -105,4 +105,5 @@ If you intend to create a branch of ABCD-GPU, or use its produced results, pleas
 ----------
 ## 7. Funding ##
 
-This work has been supported by the "Proyecto de Excelencia con Investigador de Reconocida Valía" of the "Junta de Andalucía" under grant P08-TIC04200, and by the projects TIN2017-89842-P of the "Ministerio de Economía, Industria y Competitividad",  TIN2012-37434 of the "Ministerio de Economía y Competitividad" and TIN2009-13192 of the "Ministerio de Educación y Ciencia" of Spain, both co-financed by FEDER funds. NVIDIA's supports and donations to the RGNC and to HPCLAB at NTNU are also gratefully acknowledged.
+The authors acknowledge the support of the projects TIN2017-89842-P of the "Ministerio de Economía, Industria y Competitividad", TIN2012-37434 of the "Ministerio de Economía y Competitividad" of Spain and "proyecto de excelencia con Investigador de Reconocida Valía" P08-TIC04200 of the "Junta de Andalucía", all co-financed with FEDER funds. They also acknowledge the CUDA Research Center program, granted by NVIDIA to the University of Seville in 2014 and 2015, and their donation of a Tesla K40 GPU. M.A. Martínez-del-Amor also acknowledges the support of the 3rd Postdoctoral phase of the PIF program of project P08-TIC04200.
+
