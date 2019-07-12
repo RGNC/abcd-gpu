@@ -26,39 +26,47 @@ The new innovation in version 1.0 is an input module which supports files with a
 
 The results show that with this real ecosystem model, phase 1 of DCBA is the bottleneck, since there is no competing blocks, what effectively disable phase 2 in the simulation. Moreover, we have shown that next generation GPUs, such as K40, achieves better performance, given their higher memory bandwidth and their L2 caches. For example, phases 1 and 4, which are the most data intensive in DCBA, are 10 times faster in K40 than in its predecessor, demonstrating our theory that P system simulations are memory bandwidth bounded.
 
+## 2.1 Adaptative Simulators ###
+Latest developments have been focused on improving the performance of both OpenMP and CUDA simulators. According to the design protocol of ecosystem modelling using PDP systems, modules are defined. An extension to the simulators have been developed where modules are handled in order to reduce internal loops and increase parallelism. Experiments show a great increase  of performance. For this purpose, [P-lingua 5](https://github.com/RGNC/plingua) has to be used.
+
+
 ----------
 ## 3. Installation and how to use ##
 
 ### 3.1. Requirements and dependencies ###
 
-  - A Linux based distribution (only Ubuntu has been tested; maybe a Windows system with cygwin could work, but has not been tested).
-  - A CUDA installation, from version 5.5, including: 
+  - A Linux based distribution (only Ubuntu and CentOS have been tested; maybe a Windows system with cygwin could work, but has not been tested).
+  - A CUDA installation, from version 5.5, including:
      * NVIDIA toolkit, its associated libraries, and the nvcc compiler.
      * Configure LD_LIBRARY_PATH to contain the CUDA lib(64) folder, e.g. in .bashrc, add "export LD_LIBRARY_PATH=/usr/local/cuda/lib"
-     * CUDA SDK examples.
-  - The GNU g++ compiler
-  - The GNU Scientific Library (GSL). E.g. apt-get install gsl-bin libgsl0-dev
-  - Electric Fence, in order to debug the simulator.
-  - The counterslib library, available with PMCGPU, inside the folder 8_pmcgpu 
+     * CUDA SDK examples. Create a folder 8_pmcgpu and clone this repository in that folder.
+  - The GNU g++ compiler 4.9 or later
+  - The GNU Scientific Library (GSL). E.g. apt-get install gsl-bin libgsl0-dev    
+  - The counterslib library, available with PMCGPU, inside the folder 8_pmcgpu
 
 ### 3.2. Installation ###
 
-  a. Install all the required packages from 2.1.
+  a. Install all the required packages discussed in Section 2.1.
   b. Inside the folder of CUDA SDK samples, create a new folder named 8_pmcgpu.
-  c. Extract the contents of files abcd-gpu-1.0b.tar.gz and counterslib.tar.gz inside this new folder.
-  d. Go to folder abcd-gpu-1.0b, and type "make". You should see the binary file inside the folder.
+  c. Extract the contents of files abcd-gpu-adaptative-1.0b.tar.gz and counterslib.tar.gz inside this new folder.
+  d. Go to folder adapatative-1.0b, and type "make". You should see the binary file inside the folder.
+
 
 ### 3.3 Usage ###
-
 Type ./abcdgpu -h to list the different options. In this version, input files of binary format and randomly generated PDP systems are supported.
 
+Examples:
+  * Running a generalized tritrophic model with original algorithm on the GPU: ./abcdgpu -i plingua5/tritrophic_modular.bin -f 1 -t 90 -s 50 -c 9 -I 1 -M 4
+  * Running a generalized tritrophic model with modular (adaptative) algorithm on the GPU: ./abcdgpu -i plingua5/tritrophic_modular.bin -f 1 -t 90 -s 50 -c 9 -I 1 -N
+  * Running a generalized tritrophic model with modular (adaptative) algorithm on the CPU with 4 cores: export OMP_NUM_THREADS=4; ./abcdgpu -i plingua5/tritrophic_modular.bin -f 1 -t 90 -s 50 -c 9 -I 0 -N
+  * A simulation of the Zebra Mussel model on the GPU using 20 simulations, 1020 steps and 102 steps per cycle, verbosity 2, and output of a CSV (which will be named after the input file plus the extension of .csv), enabling micro-DCBA and verbosity 2 (showing memory footprint and just the computation step number): ./abcdgpu -i plingua/zebra_mussel.bin -I 1 -t 1020 -s 20 -c 102 -v 2 -D -O 0
+  * A simulation of the Bearded Vulture model on the GPU using 100 simulations, 42 steps, 3 steps per cycle, verbosity 1, and the output of a CSV (which will be named after the input file plus the extension of .csv): ./abcdgpu -i plingua/bv_model_bwmc12.bin -I 1 -s 100 -t 42 -v 1 -c 3 -O 0
+  * A profiling execution (CPU vs GPU) for the Bearded Vulture model (in plingua folder, previously generated from the .pli file), using 1000 simulations, 42 steps, 3 steps per cycle, verbosity 1: ./abcdgpu -i plingua/bv_model_bwmc12.bin -s 1000 -t 42 -I 1 -M 1 -v 1 -c 3
   * A random PDP system sequential simulation: ./abcdgpu -X 2
   * A random PDP system (OpenMP) parallel simulation using 4 CPU cores: export OMP_NUM_THREADS=4; ./abcdgpu -X 2
   * A random PDP system (CUDA) parallel simulation: ./abcdgpu -X 2 -I 1
   * A random PDP system profiling execution (CPU vs GPU): ./abcdgpu -X 2 -I 1 -M 1
-  * A profiling execution (CPU vs GPU) for a random PDP system with 100000 rule blocks, 1000 objects in the alphabet, q degree of 4, maximum of 5 rules per block, and maximum of 3 objects in LHS membranes using 100 simulations, 20 environments (m degree) and 1 step: ./abcd -I 1 -M 1 -R -b 100000 -o 1000 -q 4 -r 5 -l 3 -s 100 -e 20 -t 1
-  * A profiling execution (CPU vs GPU) for the Bearded Vulture model (in plingua folder, previously generated from the .pli file), using 1000 simulations, 42 steps, 3 steps per cycle, verbosity 1: ./abcdgpu -f plingua/bv_model_bwmc12.bin -s 1000 -t 42 -I 1 -M 1 -v 1 -c 3
-  * A simulation of the Bearded Vulture model on the GPU using 100 simulations, 42 steps, 3 steps per cycle, verbosity 1, and the output of a csv (which will be named after the input file plus the extension of .csv): ./abcdgpu -f plingua/bv_bwmc12.bin -I 1 -s 100 -t 42 -v 1 -c 3 -O 0
+  * A profiling execution (CPU vs GPU) for a random PDP system with 100000 rule blocks, 1000 objects in the alphabet, q degree of 4, maximum of 5 rules per block, and maximum of 3 objects in LHS membranes using 100 simulations, 20 environments (m degree) and 1 step: ./abcdgpu -I 1 -M 1 -R -b 100000 -o 1000 -q 4 -r 5 -l 3 -s 100 -e 20 -t 1
 
 ----------
 ## 4. Publications ##
