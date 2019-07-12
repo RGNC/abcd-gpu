@@ -32,6 +32,7 @@
 #include <iostream>
 #include <timestat.h>
 #include <stdlib.h>
+#include <assert.h>
 
 /************************************************************/
 /* The following sets how the arrays are indexed on the CPU */
@@ -60,6 +61,34 @@ Simulator_omp_redir::Simulator_omp_redir(PDP_Psystem_REDIX* PDPps, int simulatio
 		pdp_out = new PDP_Psystem_redix_out_std(PDPps);
 		
 		init();
+}
+
+/* in reference parameters start and end writes the starting and ending block idx of the module, if it is for Pi or for Env (according to pirules) */
+/* returns if the module should be broken*/
+bool Simulator_omp_redir::module_start_end (uint & start, uint & end, int m, bool pirules, int step) {
+
+	if (options->modular) {
+		start = 0;
+		end = options->num_rule_blocks;
+
+		if (pirules) { // Pi rules
+			start = options->modules_pi_index[m];
+			if (m < options->modules-1) end = options->modules_pi_index[m+1];
+		} else {       // env rules
+			start = options->modules_env_index[m] + options->num_rule_blocks;
+			if (m < options->modules-1) end = options->modules_env_index[m+1] + options->num_rule_blocks;
+			else end+= options->num_blocks_env;
+		}
+
+		int stepc = step % options->cycles;
+		bool module_active = stepc >= options->modules_start[m] && stepc < options->modules_end[m];
+		return (!module_active);
+	}
+	else {
+		start=0;
+		end=besize;
+		return (m>=1 || pirules == false); // allows only once, when m==0 and pirules==true
+	}
 }
 
 bool Simulator_omp_redir::init() {
@@ -150,61 +179,122 @@ bool Simulator_omp_redir::init() {
 			/* Check overflows */
 			finished=true;
 			bool overflow=false;
+			int mesize = options->modules*esize;
 			
-			ini_denominator = new uint[esize];
-			ini_numerator = new uint[esize];
+			ini_denominator = new uint[mesize];
+			ini_numerator = new uint[mesize];
 			denominator = ini_denominator;
 			numerator = new uint [addition_size];
 			addition = NULL;
 			
-			for (int i=0;i<esize;i++) {
+			for (int i=0;i<mesize;i++) {
 				ini_denominator[i]=1;
 				ini_numerator[i]=0;
 			}
-			
-			for (uint block=0; block<besize; block++) {
-				for (unsigned int o=structures->ruleblock.lhs_idx[block]; o<structures->ruleblock.lhs_idx[block+1]; o++) {
-					unsigned int obj=structures->lhs.object[o];
-					unsigned int mult=GET_MULTIPLICITY(structures->lhs.mmultiplicity[o]);
-					unsigned int membr=GET_MEMBR(structures->lhs.mmultiplicity[o]);
-					
-					uint a=ini_denominator[membr*options->num_objects+obj];
-					uint b=mult;
-					
-					int multiple1 = a % b;
-					int multiple2=1;
-					if (multiple1!=0)
-						multiple2 = b % a;
-					
-					/* If a is multiple of b */
-					if (multiple1==0) {
-						overflow=safe_u_add(ini_numerator[membr*options->num_objects+obj],a/b);
+			if (options->modular) { // when using modules, we will create numerators and denominators per module (so there is no need to substract from blocks not belonging to a module)
+				for (int m=0;m<(options->modules)*2;m++) {
+					uint start,end;
+					module_start_end(start,end,m/2,(m%2)==0,0);
+
+					if (start >= end) continue;
+
+					//if (end == UINT_MAX) continue;
+
+					uint * m_ini_denominator = ini_denominator + (esize*(m/2));
+					uint * m_ini_numerator = ini_numerator + (esize*(m/2));
+
+					for (uint block=start; block<end; block++) {
+						for (unsigned int o=structures->ruleblock.lhs_idx[block]; o<structures->ruleblock.lhs_idx[block+1]; o++) {
+							unsigned int obj=structures->lhs.object[o];
+							unsigned int mult=GET_MULTIPLICITY(structures->lhs.mmultiplicity[o]);
+							unsigned int membr=GET_MEMBR(structures->lhs.mmultiplicity[o]);
+
+							uint a=m_ini_denominator[membr*options->num_objects+obj];
+							uint b=mult;
+
+							int multiple1 = a % b;
+							int multiple2=1;
+							if (multiple1!=0)
+								multiple2 = b % a;
+
+							/* If a is multiple of b */
+							if (multiple1==0) {
+								overflow=safe_u_add(m_ini_numerator[membr*options->num_objects+obj],a/b);
+							}
+							/* If b is multiple of a */
+							else if (multiple2==0) {
+								overflow=safe_u_mul(m_ini_numerator[membr*options->num_objects+obj],b/a);
+								overflow=overflow||safe_u_add(m_ini_numerator[membr*options->num_objects+obj],1);
+								m_ini_denominator[membr*options->num_objects+obj]=b;
+							}
+							/* If they are no multiple */
+							else {
+								overflow=safe_u_mul(m_ini_numerator[membr*options->num_objects+obj],b);
+								overflow=overflow||safe_u_add(m_ini_numerator[membr*options->num_objects+obj],a);
+								overflow=overflow||safe_u_mul(m_ini_denominator[membr*options->num_objects+obj],b);
+							}
+							if (overflow) break;
+						}
+						if (overflow) break;
 					}
-					/* If b is multiple of a */
-					else if (multiple2==0) {
-						overflow=safe_u_mul(ini_numerator[membr*options->num_objects+obj],b/a);
-						overflow=overflow||safe_u_add(ini_numerator[membr*options->num_objects+obj],1);
-						ini_denominator[membr*options->num_objects+obj]=b;
+					if (overflow) {
+						if (options->verbose>0) {
+							cout << "Warning: overflow detected in initialization of row sums (accurate mode n/d), switching to float" << endl;
+						}
+						accurate=false;
+						finished=false;
+						delete [] ini_denominator;
+						delete [] ini_numerator;
+						delete [] numerator;
+						ini_numerator=numerator=ini_denominator=denominator=NULL;
+						break;
 					}
-					/* If they are no multiple */
-					else {
-						overflow=safe_u_mul(ini_numerator[membr*options->num_objects+obj],b);
-						overflow=overflow||safe_u_add(ini_numerator[membr*options->num_objects+obj],a);
-						overflow=overflow||safe_u_mul(ini_denominator[membr*options->num_objects+obj],b);
-					}
-					if (overflow) break;
 				}
-				if (overflow) {
-					if (options->verbose>0) {
-						cout << "Warning: overflow detected in initialization of row sums (accurate mode n/d), switching to float" << endl;
+			} else {
+				for (uint block=0; block<besize; block++) {
+					for (unsigned int o=structures->ruleblock.lhs_idx[block]; o<structures->ruleblock.lhs_idx[block+1]; o++) {
+						unsigned int obj=structures->lhs.object[o];
+						unsigned int mult=GET_MULTIPLICITY(structures->lhs.mmultiplicity[o]);
+						unsigned int membr=GET_MEMBR(structures->lhs.mmultiplicity[o]);
+
+						uint a=ini_denominator[membr*options->num_objects+obj];
+						uint b=mult;
+
+						int multiple1 = a % b;
+						int multiple2=1;
+						if (multiple1!=0)
+							multiple2 = b % a;
+
+						/* If a is multiple of b */
+						if (multiple1==0) {
+							overflow=safe_u_add(ini_numerator[membr*options->num_objects+obj],a/b);
+						}
+						/* If b is multiple of a */
+						else if (multiple2==0) {
+							overflow=safe_u_mul(ini_numerator[membr*options->num_objects+obj],b/a);
+							overflow=overflow||safe_u_add(ini_numerator[membr*options->num_objects+obj],1);
+							ini_denominator[membr*options->num_objects+obj]=b;
+						}
+						/* If they are no multiple */
+						else {
+							overflow=safe_u_mul(ini_numerator[membr*options->num_objects+obj],b);
+							overflow=overflow||safe_u_add(ini_numerator[membr*options->num_objects+obj],a);
+							overflow=overflow||safe_u_mul(ini_denominator[membr*options->num_objects+obj],b);
+						}
+						if (overflow) break;
 					}
-					accurate=false;
-					finished=false;
-					delete [] ini_denominator;
-					delete [] ini_numerator;
-					delete [] numerator;
-					ini_numerator=numerator=ini_denominator=denominator=NULL;
-					break;
+					if (overflow) {
+						if (options->verbose>0) {
+							cout << "Warning: overflow detected in initialization of row sums (accurate mode n/d), switching to float" << endl;
+						}
+						accurate=false;
+						finished=false;
+						delete [] ini_denominator;
+						delete [] ini_numerator;
+						delete [] numerator;
+						ini_numerator=numerator=ini_denominator=denominator=NULL;
+						break;
+					}
 				}
 			}
 		}
@@ -292,6 +382,10 @@ bool Simulator_omp_redir::run_parallel_sim (int K){
 	/* Repeat for each simulation */
 	#pragma omp parallel for schedule (dynamic,1)
 	for (int simu=0; simu<options->num_simulations; simu++) {
+
+		if (PDPout)
+			PDPout->write_configuration(structures->configuration.multiset,structures->configuration.membrane,simu,0,structures->stringids.id_objects);
+		
 		int stid=omp_get_thread_num();
 		
 		#pragma omp critical (PRINT)
@@ -305,16 +399,16 @@ bool Simulator_omp_redir::run_parallel_sim (int K){
 			pdp_out->print_step(i);
 			
 			/* Selection of rules */
-			selection(simu,stid);
+			selection(simu,stid,i);
 
 			/* Execution of rules */
-			execution(simu,stid);
+			execution(simu,stid,i);
 			
 			#pragma omp critical (PRINT)
 			pdp_out->print_configuration(simu);
 
 			#pragma omp critical (OUTPUT)
-			if ((i+1)%options->cycles==0)
+			if (PDPout && (i+1)%options->cycles==0)
 				PDPout->write_configuration(structures->configuration.multiset,structures->configuration.membrane,simu,i+1,structures->stringids.id_objects);
 		}
 	}
@@ -322,24 +416,24 @@ bool Simulator_omp_redir::run_parallel_sim (int K){
 	return true;
 }
 
-int Simulator_omp_redir::selection(int sim, int stid){
+int Simulator_omp_redir::selection(int sim, int stid, int step=0){
 
 	/* PHASE 1: DISTRIBUTION */
-	if (!selection_phase1(sim,stid))
+	if (!selection_phase1(sim,stid,step))
 		return 0;
 	
 	/* PHASE 2: MAXIMALITY */
-	if (!selection_phase2(sim,stid))
+	if (!selection_phase2(sim,stid,step))
 		return 0;
 	
 	/* PHASE 3: PROBABILITY */
-	if (!selection_phase3(sim,stid))
+	if (!selection_phase3(sim,stid,step))
 		return 0;
 	
 	return 1;
 }
 
-bool Simulator_omp_redir::selection_phase1(int sim, int stid) {
+bool Simulator_omp_redir::selection_phase1(int sim, int stid, int step=0) {
 	#pragma omp critical (PRINT)
 	pdp_out->print_dcba_phase(1);
 	
@@ -357,56 +451,61 @@ bool Simulator_omp_redir::selection_phase1(int sim, int stid) {
 			m_c_conflicts[MC_IDX(m)]=besize+1;
 		}
 		
-		for (unsigned int block=0; block<besize; block++) {
-			/*** Filter 1 ***/
-			uint membr=structures->ruleblock.membrane[block];
-			bool active=false;
+		for (int m=0;m<options->modules*2;m++) {
+			uint start,end;
+			if (module_start_end(start,end,m/2,(m%2)==0,step)) continue;
 
-			// Case for rule blocks in Pi
-			if (IS_MEMBRANE(membr)) {
-				uint am=GET_MEMBRANE(membr);
-				char ch=GET_ALPHA(membr);
-				// only active those with charge alpha in LHS
-				active=(structures->configuration.membrane[CH_IDX(am)] == ch);
-			}
-			// Case for rule blocks for communication
-			else if (IS_ENVIRONMENT(membr)) {
-				active=(GET_ENVIRONMENT(membr)==env);
-			}
+			for (unsigned int block=start; block<end; block++) {
+				/*** Filter 1 ***/
+				uint membr=structures->ruleblock.membrane[block];
+				bool active=false;
 
-			/** Filter 2 **/
-			if (active) {
-				// Using new registers avoid memory accesses on the for loop
-				uint o_init=structures->ruleblock.lhs_idx[block];
-				uint o_end=structures->ruleblock.lhs_idx[block+1];
-				for (uint o=o_init; o < o_end; o++) {
-					uint obj=structures->lhs.object[o];
-					membr=structures->lhs.mmultiplicity[o];
-					uint mult=GET_MULTIPLICITY(membr);
-					membr=GET_MEMBR(membr);
+				// Case for rule blocks in Pi
+				if (IS_MEMBRANE(membr)) {
+					uint am=GET_MEMBRANE(membr);
+					char ch=GET_ALPHA(membr);
+					// only active those with charge alpha in LHS
+					active=(structures->configuration.membrane[CH_IDX(am)] == ch);
+				}
+				// Case for rule blocks for communication
+				else if (IS_ENVIRONMENT(membr)) {
+					active=(GET_ENVIRONMENT(membr)==env);
+				}
 
-					// Check if we have enough objects to apply the block
-					if (structures->configuration.multiset[MU_IDX(obj,membr)]<mult) {
-						active=false;
-						break;
+				/** Filter 2 **/
+				if (active) {
+					// Using new registers avoid memory accesses on the for loop
+					uint o_init=structures->ruleblock.lhs_idx[block];
+					uint o_end=structures->ruleblock.lhs_idx[block+1];
+					for (uint o=o_init; o < o_end; o++) {
+						uint obj=structures->lhs.object[o];
+						membr=structures->lhs.mmultiplicity[o];
+						uint mult=GET_MULTIPLICITY(membr);
+						membr=GET_MEMBR(membr);
+
+						// Check if we have enough objects to apply the block
+						if (structures->configuration.multiset[MU_IDX(obj,membr)]<mult) {
+							active=false;
+							break;
+						}
 					}
 				}
-			}
 
-			if (!active)
-				deactivate(block,env,stid);
-			else if (active && IS_MEMBRANE(membr)) {
-				uint am=GET_MEMBRANE(membr);
-				char ch=GET_ALPHA(membr);
-				if (m_c_charges[MC_IDX(am)]==4)
-					m_c_charges[MC_IDX(am)]=ch;
-				else if (m_c_charges[MC_IDX(am)]!=ch) {
-					m_c_conflicts[MC_IDX(am)] = block;
-					c_conflict = true;
+				if (!active)
+					deactivate(block,env,stid);
+				else if (active && IS_MEMBRANE(membr)) {
+					uint am=GET_MEMBRANE(membr);
+					char ch=GET_ALPHA(membr);
+					if (m_c_charges[MC_IDX(am)]==4)
+						m_c_charges[MC_IDX(am)]=ch;
+					else if (m_c_charges[MC_IDX(am)]!=ch) {
+						m_c_conflicts[MC_IDX(am)] = block;
+						c_conflict = true;
+					}
 				}
-			}
 
-			structures->nb[NB_IDX]= 0;
+				structures->nb[NB_IDX]= 0;
+			}
 		}
 	}
 	
@@ -427,34 +526,46 @@ bool Simulator_omp_redir::selection_phase1(int sim, int stid) {
 					addition[AD_IDX(i,0)]=0.0;
 				}
 			} else {
-				for (unsigned int i=0; i<esize; i++) {
-					numerator[AD_IDX(i,0)]=ini_numerator[i];
+				for (int m=0;m<options->modules;m++) {
+					uint start,end;
+					if (module_start_end(start,end,m,true,step)) continue;
+
+					uint* m_ini_numerator = ini_numerator + esize*m;
+					for (unsigned int i=0; i<esize; i++) {
+						if (m_ini_numerator[i]==0) continue;
+						numerator[AD_IDX(i,0)]=m_ini_numerator[i];
+					}
 				}
 			}
 
 			/** Normalization - step 1 **/
-			for (unsigned int block=0; block<besize; block++) {
-				if (!accurate) {
-					// If block is active
-					if (is_active(block,env,stid)) {
-						for (unsigned int o=structures->ruleblock.lhs_idx[block]; o<structures->ruleblock.lhs_idx[block+1]; o++) {
-							unsigned int obj=structures->lhs.object[o];
-							//unsigned int mult=GET_MULTIPLICITY(structures->lhs.mmultiplicity[o]);
-							unsigned int membr=GET_MEMBR(structures->lhs.mmultiplicity[o]);
-							float inv=structures->lhs.imultiplicity[o];
+			for (int m=0;m<options->modules*2;m++) {
+				uint start,end;
+				if (module_start_end(start,end,m/2,(m%2)==0,step)) continue;
+				uint* m_denominator = denominator + esize*(m/2);
+				for (unsigned int block=start; block<end; block++) {
+					if (!accurate) {
+						// If block is active
+						if (is_active(block,env,stid)) {
+							for (unsigned int o=structures->ruleblock.lhs_idx[block]; o<structures->ruleblock.lhs_idx[block+1]; o++) {
+								unsigned int obj=structures->lhs.object[o];
+								//unsigned int mult=GET_MULTIPLICITY(structures->lhs.mmultiplicity[o]);
+								unsigned int membr=GET_MEMBR(structures->lhs.mmultiplicity[o]);
+								float inv=structures->lhs.imultiplicity[o];
 
-							addition[AD_IDX(obj,membr)]+=inv;
+								addition[AD_IDX(obj,membr)]+=inv;
+							}
 						}
-					}
-				} else {
-					if (!is_active(block,env,stid)) {
-						for (unsigned int o=structures->ruleblock.lhs_idx[block]; o<structures->ruleblock.lhs_idx[block+1]; o++) {
-							unsigned int obj=structures->lhs.object[o];
-							unsigned int mult=GET_MULTIPLICITY(structures->lhs.mmultiplicity[o]);
-							unsigned int membr=GET_MEMBR(structures->lhs.mmultiplicity[o]);
+					} else {
+						if (!is_active(block,env,stid)) {
+							for (unsigned int o=structures->ruleblock.lhs_idx[block]; o<structures->ruleblock.lhs_idx[block+1]; o++) {
+								unsigned int obj=structures->lhs.object[o];
+								unsigned int mult=GET_MULTIPLICITY(structures->lhs.mmultiplicity[o]);
+								unsigned int membr=GET_MEMBR(structures->lhs.mmultiplicity[o]);
 
-							uint d=denominator[membr*options->num_objects+obj];
-							numerator[AD_IDX(obj,membr)]-=d/mult;
+								uint d=m_denominator[membr*options->num_objects+obj];
+								numerator[AD_IDX(obj,membr)]-=d/mult;
+							}
 						}
 					}
 				}
@@ -462,71 +573,83 @@ bool Simulator_omp_redir::selection_phase1(int sim, int stid) {
 
 			/* Normalization - step 2 *
 			 * Column minimum calculation */
-			for (unsigned int block=0; block<besize; block++) {
-				unsigned int minimum=0;
-				// If block is activated
-				if (is_active(block,env,stid)) {
-					minimum=UINT_MAX;
+			for (int m=0;m<options->modules*2;m++) {
+				uint start,end;
+				if (module_start_end(start,end,m/2,(m%2)==0,step)) continue;
+				uint* m_denominator = denominator + esize*(m/2);
+				for (unsigned int block=start; block<end; block++) {
+					unsigned int minimum=0;
+					// If block is activated
+					if (is_active(block,env,stid)) {
+						minimum=UINT_MAX;
 
-					//cout << endl << "sim " << sim << ", env " << env << ", block " << block << ":" << endl;
-					for (unsigned int o=structures->ruleblock.lhs_idx[block]; o<structures->ruleblock.lhs_idx[block+1]; o++) {
-						unsigned int obj=structures->lhs.object[o];
-						unsigned int mult=GET_MULTIPLICITY(structures->lhs.mmultiplicity[o]);
-						unsigned int membr=GET_MEMBR(structures->lhs.mmultiplicity[o]);
+						//cout << endl << "sim " << sim << ", env " << env << ", block " << block << ":" << endl;
+						for (unsigned int o=structures->ruleblock.lhs_idx[block]; o<structures->ruleblock.lhs_idx[block+1]; o++) {
+							unsigned int obj=structures->lhs.object[o];
+							unsigned int mult=GET_MULTIPLICITY(structures->lhs.mmultiplicity[o]);
+							unsigned int membr=GET_MEMBR(structures->lhs.mmultiplicity[o]);
 
-						unsigned int value=UINT_MAX;
-						if (!accurate)
-							value = structures->configuration.multiset[MU_IDX(obj,membr)] / (mult*mult*addition[AD_IDX(obj,membr)]);
-						else
-							value = (structures->configuration.multiset[MU_IDX(obj,membr)]*denominator[membr*options->num_objects+obj]) / (mult*mult*numerator[AD_IDX(obj,membr)]);
+							unsigned int value=UINT_MAX;
+							if (!accurate)
+								value = structures->configuration.multiset[MU_IDX(obj,membr)] / (mult*mult*addition[AD_IDX(obj,membr)]);
+							else
+								value = (structures->configuration.multiset[MU_IDX(obj,membr)]*m_denominator[membr*options->num_objects+obj]) / (mult*mult*numerator[AD_IDX(obj,membr)]);
 
-						//cout << "obj" << obj << "*" << mult << "'" << membr << "**" << structures->configuration.multiset[MU_IDX(obj,membr)] << ", add=" << addition[AD_IDX(obj,membr)] << " => value=" << value << endl;
+							//cout << "obj" << obj << "*" << mult << "'" << membr << "**" << structures->configuration.multiset[MU_IDX(obj,membr)] << ", add=" << addition[AD_IDX(obj,membr)] << " => value=" << value << endl;
 
-						minimum = (value<minimum)? value : minimum;
-					}
-
-					//cout << "MINIMUM = " << minimum << endl;
-					//structures->nr[NB_IDX]=minimum;
-				}
-				structures->nr[NRB_IDX]=minimum;
-			}		
-
-			/* Update */		
-			for (unsigned int block=0; block<besize; block++) {
-				if (structures->nr[NRB_IDX]>0) {
-					//cout << "B: sim=" << sim << ", env=" << env << ", block=" << block << endl;
-					for (unsigned int o=structures->ruleblock.lhs_idx[block]; o<structures->ruleblock.lhs_idx[block+1]; o++) {
-						unsigned int obj=structures->lhs.object[o];
-						unsigned int mult=GET_MULTIPLICITY(structures->lhs.mmultiplicity[o]);
-						unsigned int membr=GET_MEMBR(structures->lhs.mmultiplicity[o]);
-
-						//structures->configuration.multiset[MU_IDX(obj,membr)]-=block_min[BM_IDX]*mult;
-						if (structures->configuration.multiset[MU_IDX(obj,membr)] < structures->nr[NRB_IDX]*mult) {
-							#pragma omp critical (PRINT)
-							cout << "Error deleting LHS: stid=" << stid << ", sim=" << sim << ", env=" << env << ", block=" << block << ", membr=" << membr << ", o=" << obj << ": deleting " << structures->nr[NB_IDX]*mult << ", there is " << structures->configuration.multiset[MU_IDX(obj,membr)] << endl;
+							minimum = (value<minimum)? value : minimum;
 						}
-						else {
-							structures->configuration.multiset[MU_IDX(obj,membr)] -= structures->nr[NRB_IDX]*mult;
-						}
+
+						//cout << "MINIMUM = " << minimum << endl;
+						//structures->nr[NB_IDX]=minimum;
 					}
-					structures->nb[NB_IDX]+=structures->nr[NRB_IDX];
+					structures->nr[NRB_IDX]=minimum;
 				}
 			}
-			/** Filter 2 **/
-			for (unsigned int block=0; block<besize; block++) {
-				if (is_active(block,env,stid)) {
-					uint o_init=structures->ruleblock.lhs_idx[block];
-					uint o_end=structures->ruleblock.lhs_idx[block+1];
-					for (uint o=o_init; o < o_end; o++) {
-						uint obj=structures->lhs.object[o];
-						uint membr=structures->lhs.mmultiplicity[o];
-						uint mult=GET_MULTIPLICITY(membr);
-						membr=GET_MEMBR(membr);
 
-						// Check if we have enough objects to apply the block
-						if (structures->configuration.multiset[MU_IDX(obj,membr)]<mult) {
-							deactivate(block,env,stid);
-							break;
+			/* Update */
+			for (int m=0;m<options->modules*2;m++) {
+				uint start,end;
+				if (module_start_end(start,end,m/2,(m%2)==0,step)) continue;
+
+				for (unsigned int block=start; block<end; block++) {
+					if (structures->nr[NRB_IDX]>0) {
+						//cout << "B: sim=" << sim << ", env=" << env << ", block=" << block << endl;
+						for (unsigned int o=structures->ruleblock.lhs_idx[block]; o<structures->ruleblock.lhs_idx[block+1]; o++) {
+							unsigned int obj=structures->lhs.object[o];
+							unsigned int mult=GET_MULTIPLICITY(structures->lhs.mmultiplicity[o]);
+							unsigned int membr=GET_MEMBR(structures->lhs.mmultiplicity[o]);
+
+							//structures->configuration.multiset[MU_IDX(obj,membr)]-=block_min[BM_IDX]*mult;
+							if (structures->configuration.multiset[MU_IDX(obj,membr)] < structures->nr[NRB_IDX]*mult) {
+								#pragma omp critical (PRINT)
+								cout << "Error deleting LHS: stid=" << stid << ", sim=" << sim << ", env=" << env << ", block=" << block << ", membr=" << membr << ", o=" << obj << ": deleting " << structures->nr[NB_IDX]*mult << ", there is " << structures->configuration.multiset[MU_IDX(obj,membr)] << endl;
+							}
+							else {
+								structures->configuration.multiset[MU_IDX(obj,membr)] -= structures->nr[NRB_IDX]*mult;
+							}
+						}
+						structures->nb[NB_IDX]+=structures->nr[NRB_IDX];
+						if (options->modular) structures->nr[NRB_IDX]=0;
+					}
+				}
+
+				/** Filter 2 **/
+				for (unsigned int block=start; block<end; block++) {
+					if (is_active(block,env,stid)) {
+						uint o_init=structures->ruleblock.lhs_idx[block];
+						uint o_end=structures->ruleblock.lhs_idx[block+1];
+						for (uint o=o_init; o < o_end; o++) {
+							uint obj=structures->lhs.object[o];
+							uint membr=structures->lhs.mmultiplicity[o];
+							uint mult=GET_MULTIPLICITY(membr);
+							membr=GET_MEMBR(membr);
+
+							// Check if we have enough objects to apply the block
+							if (structures->configuration.multiset[MU_IDX(obj,membr)]<mult) {
+								deactivate(block,env,stid);
+								break;
+							}
 						}
 					}
 				}
@@ -544,7 +667,7 @@ bool Simulator_omp_redir::selection_phase1(int sim, int stid) {
 }
 
 
-bool Simulator_omp_redir::selection_phase2(int sim, int stid) {
+bool Simulator_omp_redir::selection_phase2(int sim, int stid, int step=0) {
 	#pragma omp critical (PRINT)
 	pdp_out->print_dcba_phase(2);
 	
@@ -554,9 +677,14 @@ bool Simulator_omp_redir::selection_phase2(int sim, int stid) {
 		unsigned int nblocks=0; /* Number of active blocks */
 		/* Initialize array for random loop */
 		unsigned int nr_idx_aux=stid*(options->num_environments*rpsize+(resize-rpsize))+env*besize;
-		for (unsigned int block=0; block<besize; block++) {
-			if (is_active(block,env,stid)) {
-				structures->nr[nr_idx_aux+(nblocks++)]=block;
+
+		for (int m=0;m<options->modules;m++) {
+			uint start,end;
+			if (module_start_end(start,end,m,true,step)) continue;
+			for (unsigned int block=start; block<end; block++) {
+				if (is_active(block,env,stid)) {
+					structures->nr[nr_idx_aux+(nblocks++)]=block;
+				}
 			}
 		}
 
@@ -605,7 +733,7 @@ bool Simulator_omp_redir::selection_phase2(int sim, int stid) {
 	return true;
 }
 
-bool Simulator_omp_redir::selection_phase3(int sim, int stid) {
+bool Simulator_omp_redir::selection_phase3(int sim, int stid, int step=0) {
 	#pragma omp critical (PRINT)
 	pdp_out->print_dcba_phase(3);
 
@@ -628,61 +756,66 @@ bool Simulator_omp_redir::selection_phase3(int sim, int stid) {
 
 
 	for (int env=0; env<options->num_environments; env++) {
-		for (unsigned int block=0; block<besize; block++) {
-			int rule_ini=structures->ruleblock.rule_idx[block];
-			int rule_end=structures->ruleblock.rule_idx[block+1];
+		for (int m=0;m<options->modules*2;m++) {
+			uint start,end;
+			if (module_start_end(start,end,m/2,(m%2)==0,step)) continue;
 
-			unsigned int N=0;
+			for (unsigned int block=start; block<end; block++) {
+				int rule_ini=structures->ruleblock.rule_idx[block];
+				int rule_end=structures->ruleblock.rule_idx[block+1];
 
-			if (block<bpsize) N=structures->nb[NB_IDX];
-			else if (env==GET_ENVIRONMENT(structures->ruleblock.membrane[block])) N=structures->nb[NB_IDX];
+				unsigned int N=0;
 
-			if (N==0) {
-				for (unsigned int r = rule_ini; r < rule_end; r++) {
-					if (r<rpsize) structures->nr[NR_P_IDX] = 0;
-					else structures->nr[NR_E_IDX] = 0;
-				}
-				continue;
-			}
+				if (block<bpsize) N=structures->nb[NB_IDX];
+				else if (env==GET_ENVIRONMENT(structures->ruleblock.membrane[block])) N=structures->nb[NB_IDX];
 
-			// TODO: check if this is more efficient than adding to a previous phase, or wherever
-			/* Execution phase: update charges */
-			/*   So execution phase only works with rules information */
-			structures->configuration.membrane[CH_IDX(GET_MEMBRANE(structures->ruleblock.membrane[block]))]=GET_BETA(structures->ruleblock.membrane[block]);
-
-			float cr=0.0,d=1.0;
-
-			//start_timer();
-			for (unsigned int r = rule_ini; r < rule_end; r++) {
-				float p=0.0;
-				unsigned int val=0;
-
-				if (r>=rpsize) {
-					p=structures->probability[options->num_environments*rpsize+(r-rpsize)];
-				}
-				else {
-					p=structures->probability[env*rpsize+r];
-				}
-
-				cr = p / d;
-
-				if (cr > 0.0) {
-					if (r == rule_end-1)
-						//structures->nr[env*structures->rule_size+r] = N;
-						val=N;
-					else {
-						val=gsl_ran_binomial (r_variable, (double) cr, N);
-						//structures->nr[env*structures->rule_size+r] = gsl_ran_binomial (r_variable, (double) cr, N);
-						//cout << "Binomial " << N << ", " << (double) cr << " = " << structures->nr[env*structures->rule_size+r] << endl;
+				if (N==0) {
+					for (unsigned int r = rule_ini; r < rule_end; r++) {
+						if (r<rpsize) structures->nr[NR_P_IDX] = 0;
+						else structures->nr[NR_E_IDX] = 0;
 					}
+					continue;
 				}
 
-				if (r<rpsize) structures->nr[NR_P_IDX] = val;
-				else structures->nr[NR_E_IDX] = val;
+				// TODO: check if this is more efficient than adding to a previous phase, or wherever
+				/* Execution phase: update charges */
+				/*   So execution phase only works with rules information */
+				structures->configuration.membrane[CH_IDX(GET_MEMBRANE(structures->ruleblock.membrane[block]))]=GET_BETA(structures->ruleblock.membrane[block]);
 
-				N-=val;
-				d*=(1-cr);
-			}			
+				float cr=0.0,d=1.0;
+
+				//start_timer();
+				for (unsigned int r = rule_ini; r < rule_end; r++) {
+					float p=0.0;
+					unsigned int val=0;
+
+					if (r>=rpsize) {
+						p=structures->probability[options->num_environments*rpsize+(r-rpsize)];
+					}
+					else {
+						p=structures->probability[env*rpsize+r];
+					}
+
+					cr = p / d;
+
+					if (cr > 0.0) {
+						if (r == rule_end-1)
+							//structures->nr[env*structures->rule_size+r] = N;
+							val=N;
+						else {
+							val=gsl_ran_binomial (r_variable, (double) cr, N);
+							//structures->nr[env*structures->rule_size+r] = gsl_ran_binomial (r_variable, (double) cr, N);
+							//cout << "Binomial " << N << ", " << (double) cr << " = " << structures->nr[env*structures->rule_size+r] << endl;
+						}
+					}
+
+					if (r<rpsize) structures->nr[NR_P_IDX] = val;
+					else structures->nr[NR_E_IDX] = val;
+
+					N-=val;
+					d*=(1-cr);
+				}
+			}
 		}
 	}
 
@@ -697,26 +830,39 @@ bool Simulator_omp_redir::selection_phase3(int sim, int stid) {
 }
 
 
-int Simulator_omp_redir::execution(int sim, int stid) {
+int Simulator_omp_redir::execution(int sim, int stid, int step=0) {
 	#pragma omp critical (PRINT)
 	pdp_out->print_dcba_phase(4);
 	
 	if (options->verbose>6) cout << endl << "========> Adding rules:" << endl;
 	for (int env=0; env<options->num_environments; env++) {
+		for (int m=0;m<options->modules;m++) {
+			uint start,end;
+			if (module_start_end(start,end,m,true,step)) continue;
+			uint rule_ini,rule_end;
+			if (options->modular) {
+				rule_ini=structures->ruleblock.rule_idx[start];
+				rule_end=structures->ruleblock.rule_idx[end];
+			}
+			else {
+				rule_ini = 0;
+				rule_end = rpsize;
+			}
 
-		for (unsigned int r=0; r<rpsize; r++) {
-			/* If there is applications */
-			if (structures->nr[NR_P_IDX]>0) {
-				if (options->verbose>6) cout << "Rule " << r << endl;
-				for (unsigned int o=structures->rule.rhs_idx[r]; o<structures->rule.rhs_idx[r+1]; o++) {
-					unsigned int obj=structures->rhs.object[o];
-					unsigned int mult=GET_MULTIPLICITY(structures->rhs.mmultiplicity[o]);
-					unsigned int membr=GET_MEMBR(structures->rhs.mmultiplicity[o]);
+			for (unsigned int r=rule_ini; r<rule_end/*rpsize*/; r++) {
+				/* If there is applications */
+				if (structures->nr[NR_P_IDX]>0) {
+					if (options->verbose>6) cout << "Rule " << r << endl;
+					for (unsigned int o=structures->rule.rhs_idx[r]; o<structures->rule.rhs_idx[r+1]; o++) {
+						unsigned int obj=structures->rhs.object[o];
+						unsigned int mult=GET_MULTIPLICITY(structures->rhs.mmultiplicity[o]);
+						unsigned int membr=GET_MEMBR(structures->rhs.mmultiplicity[o]);
 
-					structures->configuration.multiset[MU_IDX(obj,membr)]+=structures->nr[NR_P_IDX]*mult;
+						structures->configuration.multiset[MU_IDX(obj,membr)]+=structures->nr[NR_P_IDX]*mult;
 
-					//if (options->verbose>1) cout << "\t adds [obj_" << obj << "]^" << membr << "*" << structures->nr[NR_P_IDX]*mult << endl;
-					//structures->nr[NR_P_IDX]=0;
+						//if (options->verbose>1) cout << "\t adds [obj_" << obj << "]^" << membr << "*" << structures->nr[NR_P_IDX]*mult << endl;
+						//structures->nr[NR_P_IDX]=0;
+					}
 				}
 			}
 		}
@@ -724,16 +870,30 @@ int Simulator_omp_redir::execution(int sim, int stid) {
 	
 	if (options->verbose>6) cout << endl << "Communication rules" << endl;
 
-	for (unsigned int r=rpsize;r<resize;r++) {
-		if (options->verbose>6) cout << "Rule " << r << endl;
-		if (structures->nr[NR_E_IDX]>0) {
-			for (unsigned int o=structures->rule.rhs_idx[r]; o<structures->rule.rhs_idx[r+1]; o++) {
-				unsigned int obj=structures->rhs.object[o];
-				unsigned int env=structures->rhs.mmultiplicity[o];
+	for (int m=0;m<options->modules;m++) {
+		uint start,end;
+		if (module_start_end(start,end,m,false,step)) continue;
+		uint rule_ini,rule_end;
+		if (options->modular) {
+			rule_ini=structures->ruleblock.rule_idx[start];
+			rule_end=structures->ruleblock.rule_idx[end];
+		}
+		else {
+			rule_ini = rpsize;
+			rule_end = resize;
+		}
+		for (unsigned int r=rule_ini; r<rule_end; r++) {
+		//for (unsigned int r=rpsize;r<resize;r++) {
+			if (options->verbose>6) cout << "Rule " << r << endl;
+			if (structures->nr[NR_E_IDX]>0) {
+				for (unsigned int o=structures->rule.rhs_idx[r]; o<structures->rule.rhs_idx[r+1]; o++) {
+					unsigned int obj=structures->rhs.object[o];
+					unsigned int env=structures->rhs.mmultiplicity[o];
 
-				structures->configuration.multiset[MU_IDX(obj,0)]+=structures->nr[NR_E_IDX];
-				if (options->verbose>6) cout << "\t adds (obj_" << obj << ")^" << env << "*" << structures->nr[NR_E_IDX] << endl;
-				//structures->nr[NR_E_IDX]=0;
+					structures->configuration.multiset[MU_IDX(obj,0)]+=structures->nr[NR_E_IDX];
+					if (options->verbose>6) cout << "\t adds (obj_" << obj << ")^" << env << "*" << structures->nr[NR_E_IDX] << endl;
+					//structures->nr[NR_E_IDX]=0;
+				}
 			}
 		}
 	}

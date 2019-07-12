@@ -63,7 +63,7 @@
 #include <curand_kernel.h>
 #include <iostream>
 
-using namespace std;
+//using namespace std;
 
 //Comment to generalize:
 #define __IDX ((blockIdx.y * gridDim.x + blockIdx.x) * blockDim.x + threadIdx.x);
@@ -88,7 +88,7 @@ static inline __device__ unsigned int curng_binomial_binv(unsigned int n, float 
     unsigned int idx = __IDX;
     curandStateXORWOW_t localState = curng_binomial_states_k[idx];
     unsigned int x = 0;
-    
+
     //float p1 = fmin(p,1.f-p);
     //Algorithm starts here. (attribute 'x' assigned to '0')
     float q = 1.f - p;
@@ -104,14 +104,41 @@ static inline __device__ unsigned int curng_binomial_binv(unsigned int n, float 
 		break;
     }
     //Algorithm finishes here.
-    if (x>n) 
+    if (x>n)
 	x=n;
-    
+
     curng_binomial_states_k[idx] = localState;
     //x = (p<0.5f)? x : n-x;
     return x;
 }
+//Version from above, but using exclusively floats (reduced register pressure)
+static inline __device__ unsigned int curng_binomial_binv_fast(unsigned int n, float p){
+    unsigned int idx = __IDX;
+    curandStateXORWOW_t localState = curng_binomial_states_k[idx];
+    unsigned int x = 0;
 
+    //float p1 = fmin(p,1.f-p);
+    //Algorithm starts here. (attribute 'x' assigned to '0')
+    float q = 1.f - p;
+    float s = fdividef(p,q);    //Divide floating points
+    float a = (n+1)*s;
+    float r = powf(q,n);        //Pow floating points
+    float u = curand_uniform(&localState);
+    while(u > r){
+        u = u - r;
+        x++;
+        r = (fdividef(a,((float)x)) - s) * r;
+	if (r<=0.0f)
+		break;
+    }
+    //Algorithm finishes here.
+    if (x>n)
+	x=n;
+
+    curng_binomial_states_k[idx] = localState;
+    //x = (p<0.5f)? x : n-x;
+    return x;
+}
 /* Normal approximation of binomial distribution: N(np, np(1-p))
  * Condition: n*min(p,1-p) > 30
  * Standardizing normal random variables 
@@ -121,15 +148,15 @@ static inline __device__ unsigned int curng_binomial_norm(unsigned int n, float 
     unsigned int idx = __IDX;
     curandStateXORWOW_t localState = curng_binomial_states_k[idx];
     unsigned int x = 0;
-    
+
     float z = curand_normal(&localState);
     float mean = ((float)n)*p;
-    float stddev = sqrt(mean*(1.-p));
+    float stddev = sqrtf(mean*(1.f-p));
     x = (unsigned int)((z*stddev)+mean);
-    
-    if (x>n) 
+
+    if (x>n)
 	x=n;
-    
+
     curng_binomial_states_k[idx] = localState;
     return x;
 }
@@ -141,8 +168,9 @@ static inline __device__ unsigned int curng_binomial_random(unsigned int n, floa
     else if (p==0.0f)
 	k=0;
     else */
-    if (n*fmin(p,1.0f-p) < 10)
-        k = curng_binomial_binv(n,p);
+
+    if (n*fminf(p,1.0f-p) < 10)
+        k = curng_binomial_binv_fast(n,p);
     else{
         k = curng_binomial_norm(n,p);
     }
@@ -153,15 +181,28 @@ __global__ void curng_binomial_init_kernel(unsigned int time){
     unsigned int idx = __IDX;
     curand_init (time , idx , 5000 , &curng_binomial_states_k[idx]) ;
 }
+/*
+ * State setup can be an expensive operation.
+ * One way to speed up the setup is to use different seeds for each thread and a constant sequence number of 0.
+ * This can be especially helpful if many generators need to be created.
+ * While faster to set up, this method provides less guarantees about the mathematical properties of the generated sequences.
+ * Read more at: http://docs.nvidia.com/cuda/curand/index.html#ixzz58yQ1t0JQ
+ * Follow us: @GPUComputing on Twitter | NVIDIA on Facebook
+ *
+ * */
+__global__ void curng_binomial_init_kernel_fast(unsigned int time){
+    unsigned int idx = __IDX;
+    curand_init (idx+time ,0 , 5000 , &curng_binomial_states_k[idx]) ;
+}
 
 void curng_binomial_free(){
     cudaFree(curng_binomial_states);
     curng_binomial_first = 0;
 }
 
-void curng_binomial_init(dim3 griddim, dim3 blockdim) {
+void curng_binomial_init(dim3 griddim, dim3 blockdim,cudaStream_t execution_stream,bool fast) {
     const size_t sz = (griddim.x * griddim.y * blockdim.x * blockdim.y * blockdim.z)* sizeof(curandStateXORWOW_t);
-   
+
     if(curng_binomial_first > 0){
         curng_binomial_free();
     }
@@ -169,22 +210,32 @@ void curng_binomial_init(dim3 griddim, dim3 blockdim) {
     curng_binomial_first++;
 
     cudaMalloc((void **)&curng_binomial_states, sz);
-    
+
     // Old line for CUDA 4
     //cudaMemcpyToSymbol("curng_binomial_states_k", &curng_binomial_states, sizeof(curandState *), size_t(0),cudaMemcpyHostToDevice);
 
-    cudaMemcpyToSymbol(curng_binomial_states_k, &curng_binomial_states, sizeof(curandState *), size_t(0),cudaMemcpyHostToDevice);
-    
+    cudaMemcpyToSymbolAsync(curng_binomial_states_k, &curng_binomial_states, sizeof(curandState *), size_t(0),cudaMemcpyHostToDevice,execution_stream);
+
 #ifndef DEBUG
-    struct timeval tval;
-    gettimeofday(&tval,NULL);
-    unsigned int timescale = tval.tv_usec;
+	struct timeval tval;
+	gettimeofday(&tval,NULL);
+	unsigned int timescale = tval.tv_usec;
 #else
-    unsigned int timescale = 0;
+	unsigned int timescale = 0;
 #endif
-    curng_binomial_init_kernel<<<griddim,blockdim>>>(timescale);
-    getLastCudaError("Kernel initiating curng_binomial launch failure");
-    cudaDeviceSynchronize();
+
+	if(fast){
+		curng_binomial_init_kernel_fast<<<griddim,blockdim,0,execution_stream>>>(timescale);
+	}else{
+    	curng_binomial_init_kernel<<<griddim,blockdim,0,execution_stream>>>(timescale);
+    }
+
+
+
+    //No point in syncing if we want to overlap with data transfers
+//    cudaDeviceSynchronize();
+//    getLastCudaError("Kernel initiating curng_binomial launch failure");
+
 }
 
 unsigned int curng_sizeof_state(unsigned int num_threads) {

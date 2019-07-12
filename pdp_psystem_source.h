@@ -29,10 +29,12 @@
 #ifndef PDP_PSYSTEM_SOURCE_H_
 #define PDP_PSYSTEM_SOURCE_H_
 
+typedef unsigned int uint;
+
 /*
  * Options structure
+ * Employed to store information about the simulation
  */
-
 struct _options{
 	int num_rule_blocks;
 	int num_blocks_env;
@@ -55,6 +57,44 @@ struct _options{
 	int verbose;
 	unsigned long int mem;
 	int debug;
+
+	unsigned int* output_filter;
+	//Counts the number of objects that will be output, to allocate an array
+	unsigned int objects_to_output;
+	//Whether the output will be filtered in the GPU or the CPU
+	bool GPU_filter;
+
+	//Whether the RNG with curand_init (GPU only) will be faster but less accurate.
+	bool fast;
+
+	//After how many steps will the errors be brought from gpu
+	int error_cycle;
+
+	//Micro DCBA params
+	bool micro;
+	int num_partitions;
+	int independent_ruleblocks;
+
+	//For random systems, how many of the objects will be present at the initial configuration
+	float objects_init_config;
+
+	//Adaptative simulator: modular design of P systems
+	bool modular;
+	uint modules; /** The total amount of modules in the P system, 1 if no modules defined */
+	uint *modules_start; /** The first step within a cycle where a module starts */
+	uint *modules_end; /** The last step within a cycle (not inclusive) when a module ends */
+	uint *modules_pi_index; /** For each module the first PI ruleblock index belonging to it. Assumes that rules are already correctly sorted. */
+	uint *modules_env_index; /** For each module the first environment ruleblock index belonging to it. Assumes that rules are already correctly sorted. */
+};
+
+struct _computations{
+	unsigned int besize;//=options.num_blocks_env+options.num_rule_blocks;
+	unsigned int esize;//=options.num_objects*options.num_membranes;
+	unsigned int msize;//=options.num_objects;
+	unsigned int asize;//=(besize>>ABV_LOG_WORD_SIZE) + 1;
+	unsigned int block_chunks;//=(besize + blockDim.x -1)>>CU_LOG_THREADS;
+	unsigned int rpsize;
+	unsigned int resize;
 };
 
 typedef struct _options * Options;
@@ -186,6 +226,15 @@ public:
 	virtual char ** get_environments_ids()=0;
 	virtual char ** get_membranes_ids()=0;
 	/* End about debugging */
+
+	/***************************************************************/
+	/* Modular definition of P systems with default implementation */
+	int number_of_modules() {return 0;}                 /** Return the total amount of modules in the P system, 0 if no modules defined */
+	int* modules_start_step() {return 0;}            /** Return the first step within a cycle where a module starts */
+	int* modules_end_step() {return 0;}              /** Return the last step within a cycle (not inclusive) when a module ends */
+	int* modules_pi_ruleblock_indexes() {return 0;}  /** Return for each module the first PI ruleblock index belonging to it. Assumes that rules are already correctly sorted. */
+	int* modules_env_ruleblock_indexes() {return 0;} /** Return for each module the first environment ruleblock index belonging to it. Assumes that rules are already correctly sorted. */
+	/***************************************************************/
 };
 
 #endif /* PDP_PSYSTEM_SOURCE_H_ */

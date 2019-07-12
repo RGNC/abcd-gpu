@@ -1,6 +1,6 @@
 readme.txt: This file explains the code and the structure of the algorithm.
 
-Version 1.0 beta
+Version 1.0 beta of adaptative simulator for PDP systems.
 
 
 I. Motivation
@@ -18,36 +18,40 @@ II. Installation and requirements:
 
 2.1. Requirements and dependencies:
 
-- A Linux based distribution (only Ubuntu has been tested; maybe a Windows system with cygwin could work, but has not been tested).
+- A Linux based distribution (only Ubuntu and CentOS have been tested; maybe a Windows system with cygwin could work, but has not been tested).
 - A CUDA installation, from version 5.5, including: 
      * NVIDIA toolkit, its associated libraries, and the nvcc compiler.
      * Configure LD_LIBRARY_PATH to contain the CUDA lib(64) folder, e.g. in .bashrc, add "export LD_LIBRARY_PATH=/usr/local/cuda/lib"
      * CUDA SDK examples.
-- The GNU g++ compiler
+- The GNU g++ compiler 4.9 or later
 - The GNU Scientific Library (GSL). E.g. apt-get install gsl-bin libgsl0-dev
 - Electric Fence, in order to debug the simulator.
 - The counterslib library, available with PMCGPU, inside the folder 8_pmcgpu 
 
 2.2. Installation:
 
-a. Install all the required packages from 2.1.
+a. Install all the required packages discussed in Section 2.1.
 b. Inside the folder of CUDA SDK samples, create a new folder named 8_pmcgpu.
-c. Extract the contents of files abcd-gpu-1.0b.tar.gz and counterslib.tar.gz inside this new folder.
-d. Go to folder abcd-gpu-1.0b, and type "make". You should see the binary file inside the folder.
+c. Extract the contents of files abcd-gpu-adaptative-1.0b.tar.gz and counterslib.tar.gz inside this new folder.
+d. Go to folder adapatative-1.0b, and type "make". You should see the binary file inside the folder.
 
 
 III. Usage:
 
 Type ./abcdgpu -h to list the different options. In this version, input files of binary format and randomly generated PDP systems are supported.
 
+Examples:
+* Running a generalized tritrophic model with original algorithm on the GPU: ./abcdgpu -i plingua5/tritrophic_modular.bin -f 1 -t 90 -s 50 -c 9 -I 1 -M 4
+* Running a generalized tritrophic model with modular (adaptative) algorithm on the GPU: ./abcdgpu -i plingua5/tritrophic_modular.bin -f 1 -t 90 -s 50 -c 9 -I 1 -N
+* Running a generalized tritrophic model with modular (adaptative) algorithm on the CPU with 4 cores: export OMP_NUM_THREADS=4; ./abcdgpu -i plingua5/tritrophic_modular.bin -f 1 -t 90 -s 50 -c 9 -I 0 -N
+* A simulation of the Zebra Mussel model on the GPU using 20 simulations, 1020 steps and 102 steps per cycle, verbosity 2, and output of a CSV (which will be named after the input file plus the extension of .csv), enabling micro-DCBA and verbosity 2 (showing memory footprint and just the computation step number): ./abcdgpu -i plingua/zebra_mussel.bin -I 1 -t 1020 -s 20 -c 102 -v 2 -D -O 0
+* A simulation of the Bearded Vulture model on the GPU using 100 simulations, 42 steps, 3 steps per cycle, verbosity 1, and the output of a CSV (which will be named after the input file plus the extension of .csv): ./abcdgpu -i plingua/bv_model_bwmc12.bin -I 1 -s 100 -t 42 -v 1 -c 3 -O 0
+* A profiling execution (CPU vs GPU) for the Bearded Vulture model (in plingua folder, previously generated from the .pli file), using 1000 simulations, 42 steps, 3 steps per cycle, verbosity 1: ./abcdgpu -i plingua/bv_model_bwmc12.bin -s 1000 -t 42 -I 1 -M 1 -v 1 -c 3
 * A random PDP system sequential simulation: ./abcdgpu -X 2
 * A random PDP system (OpenMP) parallel simulation using 4 CPU cores: export OMP_NUM_THREADS=4; ./abcdgpu -X 2
 * A random PDP system (CUDA) parallel simulation: ./abcdgpu -X 2 -I 1
 * A random PDP system profiling execution (CPU vs GPU): ./abcdgpu -X 2 -I 1 -M 1
-* A profiling execution (CPU vs GPU) for a random PDP system with 100000 rule blocks, 1000 objects in the alphabet, q degree of 4, maximum of 5 rules per block, and maximum of 3 objects in LHS membranes using 100 simulations, 20 environments (m degree) and 1 step: ./abcd -I 1 -M 1 -R -b 100000 -o 1000 -q 4 -r 5 -l 3 -s 100 -e 20 -t 1
-* A profiling execution (CPU vs GPU) for the Bearded Vulture model (in plingua folder, previously generated from the .pli file), using 1000 simulations, 42 steps, 3 steps per cycle, verbosity 1: ./abcdgpu -f plingua/bv_model_bwmc12.bin -s 1000 -t 42 -I 1 -M 1 -v 1 -c 3
-* A simulation of the Bearded Vulture model on the GPU using 100 simulations, 42 steps, 3 steps per cycle, verbosity 1, and the output of a csv (which will be named after the input file plus the extension of .csv): ./abcdgpu -f plingua/bv_bwmc12.bin -I 1 -s 100 -t 42 -v 1 -c 3 -O 0
-
+* A profiling execution (CPU vs GPU) for a random PDP system with 100000 rule blocks, 1000 objects in the alphabet, q degree of 4, maximum of 5 rules per block, and maximum of 3 objects in LHS membranes using 100 simulations, 20 environments (m degree) and 1 step: ./abcdgpu -I 1 -M 1 -R -b 100000 -o 1000 -q 4 -r 5 -l 3 -s 100 -e 20 -t 1
 
 
 IV. Source:
@@ -68,7 +72,9 @@ The objective of each file is the following:
 
 - pdp_psystem_source_random.cpp/.h: A random generator of PDP systems.
 
-- pdp_psystem_source_binary.cpp/.h: An input module to read binary files.
+- pdp_psystem_source_binary.cpp/.h: An input module to read binary files, specific format as defined in 2014.
+
+- pdp_psystem_source_pl5.cpp/.h: An input module to read binary files generated by p-lingua 5.
 
 - pdp_psystem_output.cpp/.h: Class of P system output modules.
 
@@ -94,6 +100,6 @@ The objective of each file is the following:
 
 V. Acknowledgements
 
-The authors acknowledge the support of the projects TIN2012-37434 of the "Ministerio de Economía y Competitividad" of Spain, co-financed by FEDER funds, and "proyecto de excelencia con Investigador de Reconocida Valía" P08-TIC04200 of the "Junta de Andalucía". They also acknowledge the CUDA Research Center program, granted by NVIDIA to the University of Seville in 2014 and 2015, and their donation of a Tesla K40 GPU. M.A. Martínez-del-Amor also acknowledges the support of the 3rd Postdoctoral phase of the PIF program of project P08-TIC04200.
+The authors acknowledge the support of the projects TIN2017-89842-P of the "Ministerio de Economía, Industria y Competitividad", TIN2012-37434 of the "Ministerio de Economía y Competitividad" of Spain and "proyecto de excelencia con Investigador de Reconocida Valía" P08-TIC04200 of the "Junta de Andalucía", all co-financed with FEDER funds. They also acknowledge the CUDA Research Center program, granted by NVIDIA to the University of Seville in 2014 and 2015, and their donation of a Tesla K40 GPU. M.A. Martínez-del-Amor also acknowledges the support of the 3rd Postdoctoral phase of the PIF program of project P08-TIC04200.
 
-/*$Id: readme.txt 2015-07-19 20:38:45 mdelamor $*/
+/*$Id: readme.txt 2019-01-02 12:57:36 mdelamor $*/

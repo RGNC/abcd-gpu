@@ -103,6 +103,7 @@ private:
 	/* Auxiliary data structures */
 	/*****************************/
 	PDP_Psystem_REDIX::Structures structures, d_structures;
+	PDP_Psystem_REDIX::Configuration d_configuration;
 	Options options;
 
 	MULTIPLICITY *d_nb;
@@ -115,6 +116,7 @@ private:
 	
 	/* Options for the simulator */
 	bool runcomp;
+	bool profiling;
 	int mode;
 	bool accurate;
 	bool error;
@@ -125,10 +127,28 @@ private:
 	int sim_parallel;
 	cudaDeviceProp dev_property;
 
+	cudaStream_t execution_stream, copy_stream;
 	/*******************************/
 	PDP_Psystem_output * PDPout;
 	bool will_out;
+	unsigned int *d_output_filter;
+	MULTIPLICITY* output_multiset;
+	MULTIPLICITY* d_output_multiset;
 
+	//Micro-DCBA elements
+	int* d_partition;
+	uint* accum_offset;
+	uint* ordered_rules;
+	uint* part_indexes;
+	uint compacted_blocks;
+	uint large_blocks;
+	#define NUM_STREAMS 12
+	cudaStream_t streams[NUM_STREAMS];
+
+	//Compacting blocks
+	uint* d_sizes;
+	uint* d_active_blocks;
+	uint* d_active_rules;
 	/*******************************/
 	/* Only for debugging purposes */
 
@@ -141,28 +161,37 @@ private:
         
         
 	/* Initialization */
-	bool init();
-	void del();
-	void reset(int sim_ini);
+	bool init(); /** Initializes all the data structures in the simulator */
+	void del();  /** Deletes all the data structures in the simulator */
+	void reset(int sim_ini); /** Go back to initial configuration (just restore the initial PDP system state again) */
+	void cleanup(); /** Reset all auxiliary data structures */
+	//Sync retrieval of data
 	void retrieve(int sim_ini);
 
+	//Async retrieval of data: first copy to aux configuration, then retrieve async
+	void retrieve_copy();
+	void retrieve_async(int sim_ini);
+
+	void write_async(int psb,int i);
+	void do_nothing();
 	/* Micro phases executed on GPU */
-	bool selection_phase1();
-	bool selection_phase2();
-	bool selection_phase3();
+	bool selection_phase1(uint step);
+	bool selection_phase2(uint step);
+	bool selection_phase3(uint step);
 
 	/* Micro phases executed on CPU */
-	void gold_selection_phase1();
-	void gold_selection_phase2();
-	void gold_selection_phase3();
+	void gold_selection_phase1(uint step);
+	void gold_selection_phase2(uint step);
+	void gold_selection_phase3(uint step);
 	
-	void gold_selection_phase1_acu();
+	void gold_selection_phase1_acu(uint step);
 	
-	unsigned int gold_execution();
+	unsigned int gold_execution(uint step);
 
 	/* Main phases */
-	int selection();
-	int execution();
+	int selection(uint step);
+	int execution(uint step);
+	bool check_step_errors();
 	
 	/***************************************************************/
 	/* The following defines how to use activation bit vectors ABV */
@@ -261,7 +290,7 @@ private:
 	PDP_Psystem_REDIX::Structures structures,original_structures;
 	Options options;
 	Simulator_gpu_dir::Time_values counters;
-	bool runcomp;
+	bool runcomp, profiling;
 	// Parallel Simulation Block
 	int psb;
 
@@ -274,12 +303,13 @@ public:
 	// The structures from pdp object will be used to retrieve data from GPU, be sure that you have a copy beforehand
 	// The structures on the GPU should be created. It can be assigned later instead, but be sure to have them initialized
 	//  before using print methods at your own risk!
-    PDP_Psystem_redix_out_std_gpuwrapper (PDP_Psystem_REDIX* pdp, PDP_Psystem_REDIX::Structures d_structures=NULL, bool runcomp=false, Simulator_gpu_dir::Time_values counters=NULL) {
+    PDP_Psystem_redix_out_std_gpuwrapper (PDP_Psystem_REDIX* pdp, PDP_Psystem_REDIX::Structures d_structures=NULL, bool runcomp=false, Simulator_gpu_dir::Time_values counters=NULL, bool profiling=false) {
     	pdpout=new PDP_Psystem_redix_out_std(pdp);
     	options=pdp->options;
     	this->d_structures=d_structures;
     	this->counters=counters;
     	this->runcomp=runcomp;
+    	this->profiling=profiling;
     	this->psb=0;
 
 
@@ -412,6 +442,7 @@ public:
     }
 
     void print_temporal_configuration();
+    void print_block_competition(int competing_block,bool env_blocks);
 
     /* Concerning run comparison between GPU and CPU, and profiling */
     void print_profiling_table ();

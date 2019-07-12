@@ -26,9 +26,11 @@
     along with ABCD-GPU.  If not, see <http://www.gnu.org/licenses/>. */
 
 #include "pdp_psystem_redix.h"
+#include "competition.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <iostream>
+#include <cstring>
 
 using namespace std;
 
@@ -275,6 +277,7 @@ PDP_Psystem_REDIX::PDP_Psystem_REDIX(PDP_Psystem_source * source) {
 
 	structures->configuration.multiset_size = options->num_objects*options->num_membranes*options->num_environments;//*options->num_parallel_simulations;
 	structures->configuration.multiset = new MULTIPLICITY [structures->configuration.multiset_size];
+	memset(structures->configuration.multiset, 0, structures->configuration.multiset_size*sizeof(MULTIPLICITY));
 
 	structures->configuration.membrane_size = options->num_membranes*options->num_environments;
 	structures->configuration.membrane = new CHARGE [structures->configuration.membrane_size];
@@ -306,6 +309,7 @@ PDP_Psystem_REDIX::PDP_Psystem_REDIX(PDP_Psystem_source * source) {
 		} while (source->conf_next_membrane());
 		env++;
 	} while (source->conf_next_environment());
+	//structures->configuration.multiset[9] = 2;
 
 	structures->stringids.id_objects=source->get_objects_ids();
 	structures->stringids.id_membranes=source->get_membranes_ids();
@@ -313,6 +317,14 @@ PDP_Psystem_REDIX::PDP_Psystem_REDIX(PDP_Psystem_source * source) {
 	
 	/* Finally, process end, and printing system */
 	print();
+
+	//print_competition();
+//	for(int i=0;i<options->num_rule_blocks;i++){
+//		print_block_competition(i,false);
+//	}
+//	for(int i=options->num_rule_blocks;i<options->num_blocks_env+options->num_rule_blocks;i++){
+//			print_block_competition(i,true);
+//	}
 }
 
 void PDP_Psystem_REDIX::print() {
@@ -325,7 +337,7 @@ void PDP_Psystem_REDIX::print() {
 	unsigned int rhsmem = structures->rhs_size * (sizeof(OBJECT)+sizeof(MULTIPLICITY));
 	unsigned int multmem = structures->configuration.multiset_size * sizeof(MULTIPLICITY);
 	unsigned int mbmem = structures->configuration.membrane_size * sizeof(CHARGE);
-
+	unsigned int fmem=options->objects_to_output*sizeof(OBJECT);//output filter
 	options->mem = brmem+lhsmem+rmem+pmem+rhsmem+multmem+mbmem;
 
 	if (options->verbose > 1) {
@@ -466,7 +478,7 @@ void PDP_Psystem_REDIX::print() {
         cout << "Multisets: " << multmem << " (" << multmem/1024 << "KB)" << endl;
         cout << "Membrane: " << mbmem << " (" << mbmem/1024 << "KB)" << endl;
 
-        unsigned long int memb = options->mem = brmem+lhsmem+rmem+pmem+rhsmem+multmem+mbmem;
+        unsigned long int memb = options->mem = brmem+lhsmem+rmem+pmem+rhsmem+multmem+mbmem+fmem;
         int count=0;
         float div=1;
         char unit[6]={' ','K','M','G','T','P'};
@@ -586,10 +598,14 @@ void PDP_Psystem_redix_out_std::print_configuration(int sim) {
 	cout << "========> Configuration " << endl;
 
 	for (int env=0; env<options->num_environments; env++) {
-		cout << "==========> Environment " << structures->stringids.id_environments[env] << ":";
+		if (structures->stringids.id_environments[env]) cout << "==========> Environment " << structures->stringids.id_environments[env] << ":";
+		else cout << "==========> Environment " << env << ":";
 
 		for (int memb=0; memb<options->num_membranes; memb++) {
-			cout << endl << "============> Membrane " << structures->stringids.id_membranes[memb] << "(charge " << CHARGE_TO_CHAR(structures->configuration.membrane[sim*(options->num_environments*options->num_membranes)+env*options->num_membranes+(memb)]) << "): ";
+			if (structures->stringids.id_membranes[memb]) cout << endl << "============> Membrane " << structures->stringids.id_membranes[memb];
+			else cout << endl << "============> Membrane " << memb ;
+			cout << "(charge " << CHARGE_TO_CHAR(structures->configuration.membrane[sim*(options->num_environments*options->num_membranes)+env*options->num_membranes+(memb)]) << "): ";
+
 			for (int obj=0; obj<options->num_objects; obj++) {
 				if (structures->stringids.id_objects)
 					cout << structures->stringids.id_objects[obj];
@@ -650,7 +666,7 @@ void PDP_Psystem_redix_out_std::print_rule_selection(int sim){
 
 				if (r<rpsize)
 					val=structures->nr[sim*(options->num_environments*rpsize+(resize-rpsize))+env*rpsize+r];
-				else
+				else if (env==GET_ENVIRONMENT(structures->ruleblock.membrane[block]))
 					val=structures->nr[sim*(options->num_environments*rpsize+(resize-rpsize))+options->num_environments*rpsize+(r-rpsize)];
 
 				cout << "R" << r-rule_ini << "[" << r << "]:(p=" << p << ",n=" << val <<"), ";
@@ -671,4 +687,156 @@ void PDP_Psystem_redix_out_std::print_temporal_configuration(int sim) {
 	
 	cout << "========> Temporal configuration:" << endl;
 	print_configuration(sim);
+}
+
+void PDP_Psystem_redix_out_std::print_block_competition(int competing_block,bool env_blocks){
+  pdp->print_block_competition(competing_block,env_blocks);
+}
+void PDP_Psystem_REDIX::print_block_competition(int competing_block, bool env_blocks){
+	int end_block=env_blocks?options->num_blocks_env+options->num_rule_blocks:options->num_rule_blocks;
+	cout << "--- Checking "<< (env_blocks?"environment ":"") <<"block " << competing_block << " competition ---" << endl;
+
+	for (int block=competing_block+1; block < end_block; block++) {
+
+		for (unsigned int j=structures->ruleblock.lhs_idx[competing_block]; j<structures->ruleblock.lhs_idx[competing_block+1]; j++){
+
+			bool competes=false;
+			for (unsigned int k=structures->ruleblock.lhs_idx[block]; k<structures->ruleblock.lhs_idx[block+1]; k++){
+				//If they share an object in the same membrane
+				if(structures->lhs.object[j]==structures->lhs.object[k]
+				         &&GET_MEMBR(structures->lhs.mmultiplicity[j])==GET_MEMBR(structures->lhs.mmultiplicity[k])){
+
+					// Also the blocks stand for different membranes OR
+					// They stand for the same membrane and have the same charge
+					if(GET_MEMBRANE(structures->ruleblock.membrane[block])!=GET_MEMBRANE(structures->ruleblock.membrane[competing_block])
+							|| (GET_ALPHA(structures->ruleblock.membrane[block])==GET_ALPHA(structures->ruleblock.membrane[competing_block])
+							//&& GET_BETA(structures->ruleblock.membrane[block])==GET_BETA(structures->ruleblock.membrane[competing_block])
+							)){
+
+						competes=true;
+						break;
+					}
+				}
+			}
+			if(competes){
+
+				cout << "\t Competes with  " << block << endl;
+				break;
+			}
+		}
+
+	}
+	//cout << endl << "--- Competition end ---" << endl << endl;
+}
+
+void PDP_Psystem_REDIX::print_competition()
+{
+
+	//GPU version
+	int* partition=new int[options->num_rule_blocks];
+	int* trans_partition=new int[options->num_rule_blocks];
+	int* alphabet=new int[options->num_objects*options->num_membranes];
+	competition::reset_partition(partition,
+			alphabet,
+			options->num_rule_blocks,
+			options->num_objects*options->num_membranes);
+	clock_t cpu_startTime, cpu_endTime;
+
+    double cpu_ElapseTime=0;
+    cpu_startTime = clock();
+
+
+	competition::make_partition_gpu(partition,
+			structures->ruleblock.lhs_idx,
+			structures->lhs.object,
+			alphabet,
+			options->num_rule_blocks,
+			options->num_objects,
+			options->num_membranes,
+			structures->lhs.mmultiplicity,
+			structures->lhs_size);
+
+    cpu_endTime = clock();
+
+    cpu_ElapseTime = ((cpu_endTime - cpu_startTime)/(double)CLOCKS_PER_SEC);
+
+    std::cout<< "GPU partition time: "<< cpu_ElapseTime <<std::endl;
+
+
+	competition::normalize_partition(partition,trans_partition,options->num_rule_blocks);
+
+	//competition::print_rules(structures->ruleblock.lhs_idx,structures->lhs.object,options->num_rule_blocks,options->num_objects);
+	//competition::print_partition(trans_partition,alphabet,options->num_rule_blocks,options->num_objects*options->num_membranes);
+
+	//CPU version 1
+//	int* trans_partition_2=new int[options->num_rule_blocks];
+//	int* alphabet_2=new int[options->num_objects];
+//	competition::reset_partition(partition,
+//			alphabet_2,
+//			options->num_rule_blocks,
+//			options->num_objects);
+//
+//
+//    cpu_ElapseTime=0;
+//    cpu_startTime = clock();
+//
+//
+//	competition::make_partition(partition,
+//			structures->ruleblock.lhs_idx,
+//			structures->lhs.object,
+//			alphabet_2,
+//			options->num_rule_blocks,
+//			options->num_objects,
+//			structures->ruleblock.membrane,
+//			structures->lhs.mmultiplicity);
+//
+//    cpu_endTime = clock();
+//
+//    cpu_ElapseTime = ((cpu_endTime - cpu_startTime)/(double)CLOCKS_PER_SEC);
+//
+//    std::cout<< "CPU partition time: "<< cpu_ElapseTime <<std::endl;
+//
+//
+//	competition::normalize_partition(partition,trans_partition_2,options->num_rule_blocks);
+//
+//	//competition::print_comparing_partition(trans_partition,alphabet,trans_partition_2,alphabet_2,options->num_rule_blocks,options->num_objects);
+//	competition::compare_partition(trans_partition,alphabet,trans_partition_2,alphabet_2,options->num_rule_blocks,options->num_objects);
+
+	//CPU version 2
+
+	int* trans_partition_2=new int[options->num_rule_blocks];
+	int* alphabet_2=new int[options->num_objects*options->num_membranes];
+
+	competition::reset_partition(partition,
+			alphabet_2,
+			options->num_rule_blocks,
+			options->num_objects*options->num_membranes);
+
+    cpu_ElapseTime=0;
+    cpu_startTime = clock();
+
+
+    competition::make_partition_2(partition,
+    			structures->ruleblock.lhs_idx,
+    			structures->lhs.object,
+    			alphabet_2,
+    			options->num_rule_blocks,
+    			options->num_objects,
+    			options->num_membranes,
+    			structures->lhs.mmultiplicity,
+    			structures->lhs_size);
+
+    cpu_endTime = clock();
+
+    cpu_ElapseTime = ((cpu_endTime - cpu_startTime)/(double)CLOCKS_PER_SEC);
+
+    std::cout<< "CPU partition v2 time: "<< cpu_ElapseTime <<std::endl;
+
+
+	int num_partitions=competition::normalize_partition(partition,trans_partition_2,options->num_rule_blocks);
+
+//	competition::print_comparing_partition(trans_partition,alphabet,trans_partition_2,alphabet_2,options->num_rule_blocks,options->num_objects);
+	competition::compare_partition(trans_partition,alphabet,trans_partition_2,alphabet_2,options->num_rule_blocks,options->num_objects);
+
+
 }

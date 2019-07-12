@@ -60,7 +60,7 @@
 CUDA_PATH:= /usr/local/cuda
 
 # GNU g++ compiler is required
-GCC := g++
+GCC := g++ -std=c++11 
 	
 # NVIDIA nvcc compiler is required
 NVCC := nvcc -ccbin $(GCC)
@@ -68,11 +68,11 @@ NVCC := nvcc -ccbin $(GCC)
 ################################################################################
 # Additional configuration
 
-INCLUDES	:=  -I../counterslib/inc -I../../common/inc\
+INCLUDES	:=  -I../counterslib/inc -I/usr/local/cuda/samples/common/inc -I../../common/inc\
 		    -I$(CUDA_PATH)/include -I.
 
-LIB		:= -L../../common/lib -L../counterslib/lib \
-                   -ltimestat -lgsl -lgslcblas 
+LIB		:= -L../../common/lib -L/usr/local/cuda/samples/common/lib -L../counterslib/lib \
+                   -ltimestat -lgsl -lgslcblas -lcuda
 
 # You need to have GSL installed, if you are on linux, install the packages
 # gsl-bin libgsl0-dev
@@ -93,12 +93,12 @@ CXXFLAGS	:= -fopenmp
 ifeq ($(dbg),1)
       NVCCFLAGS += -g -G -D DEBUG
       CXXFLAGS += -g -O0 -D DEBUG
-      LIB += -lefence
+      #LIB += -lefence
       TARGET := debug
 else ifeq ($(dbg),2)
       NVCCFLAGS += -g -G -D DEBUG -D BIN_DEBUG
       CXXFLAGS += -g -O0 -D DEBUG -D BIN_DEBUG
-      LIB += -lefence
+      #LIB += -lefence
       TARGET := debug
 else
       CXXFLAGS += -O2
@@ -107,9 +107,9 @@ endif
 
 #NVCCFLAGS += $(addprefix --compiler-options ,$(CXXFLAGS)) 
 #NVCXXFLAGS ?= --compiler-options $(CXXFLAGS)
-NVCCFLAGS += -Xcompiler $(CXXFLAGS)
+NVCCFLAGS += -Xcompiler $(CXXFLAGS) -rdc=true
 
-ALL_CFLAGS := $(INCLUDES) $(CXXFLAGS)
+ALL_CFLAGS := $(INCLUDES) $(CXXFLAGS) --std=c++11
 ALL_LDFLAGS := $(LIB)
 
 
@@ -119,12 +119,14 @@ ALL_LDFLAGS := $(LIB)
 # I have. Perhaps do a configure.ac, to detect the GPU and tune the makefile?.
 
 # Add here your generation of GPU
-GENCODE_SM12    := -gencode arch=compute_12,code=sm_12
-GENCODE_SM13    := -gencode arch=compute_13,code=sm_13
-GENCODE_SM20    := -gencode arch=compute_20,code=sm_20
+#GENCODE_SM12    := -gencode arch=compute_12,code=sm_12
+#GENCODE_SM13    := -gencode arch=compute_13,code=sm_13
+#GENCODE_SM20    := -gencode arch=compute_20,code=sm_20
 GENCODE_SM35    := -gencode arch=compute_35,code=\"sm_35,compute_35\"
+GENCODE_SM50    := -gencode arch=compute_50,code=\"sm_50,compute_50\"
+GENCODE_SM61    := -gencode arch=compute_61,code=\"sm_61,compute_61\"
 GENCODE_FLAGS   := $(GENCODE_SM12) $(GENCODE_SM13) $(GENCODE_SM20)\
-	$(GENCODE_SM35)
+	$(GENCODE_SM35) $(GENCODE_SM50) $(GENCODE_SM61)
 
 
 ################################################################################
@@ -133,11 +135,11 @@ GENCODE_FLAGS   := $(GENCODE_SM12) $(GENCODE_SM13) $(GENCODE_SM20)\
 OBJDIR	:= objs
 
 # CUDA source files (compiled with nvcc)
-CUFILES	:= simulator_gpu_dir.cu
+CUFILES	:= simulator_gpu_dir.cu competition.cu
 
 # C++ source files (compiled with g++)
 CCFILES	:= binbit.cpp pdp_psystem_source_random.cpp\
-	pdp_psystem_source_binary.cpp pdp_psystem_output_binary.cpp\
+	pdp_psystem_source_binary.cpp pdp_psystem_output_binary.cpp pdp_psystem_source_pl5.cpp\
 	pdp_psystem_output_csv.cpp\
 	pdp_psystem_sab.cpp pdp_psystem_redix.cpp\
 	simulator_seq_table.cpp simulator_seq_dir.cpp\
@@ -148,12 +150,12 @@ CCHFILES := binbit.h pdp_psystem.h pdp_psystem.h\
 	pdp_psystem_output.h pdp_psystem_output_binary.h\
 	pdp_psystem_output_csv.h\
 	pdp_psystem_redix.h pdp_psystem_sab.h\
-	pdp_psystem_source.h pdp_psystem_source_binary.h\
+	pdp_psystem_source.h pdp_psystem_source_binary.h pdp_psystem_source_pl5.h\
 	pdp_psystem_source_random.h simulator.h\
 	simulator_gpu_omp_dir.h simulator_omp_redir.h simulator_seq_dir.h\
 	simulator_seq_table.h
 
-CUHFILES := curng_binomial.h simulator_gpu_dir.h
+CUHFILES := curng_binomial.h simulator_gpu_dir.h competition.h
 
 OBJS := $(patsubst %.cpp,$(OBJDIR)/%.cpp.o, $(CCFILES))
 OBJS += $(patsubst %.cu,$(OBJDIR)/%.cu.o, $(CUFILES))

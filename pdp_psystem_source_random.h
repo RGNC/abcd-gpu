@@ -57,6 +57,9 @@ private:
 	float * prob;
 	short int *env_lengthU;
 
+	//Random cell structure. Index contains membrane (index+1)'s parent
+	unsigned int* mutree;
+
 	/* Iterators */
 	unsigned int rule_block_it;
 	unsigned int U_it;
@@ -72,6 +75,8 @@ private:
 	unsigned int memb_it;
 	unsigned int obj_it;
 
+	unsigned int* env_env;
+	unsigned int* env_obj;
 public:
 	bool start();
 	unsigned int pi_loop_rule_blocks();

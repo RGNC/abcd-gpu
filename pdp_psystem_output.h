@@ -36,7 +36,7 @@
 #define	PDP_PSYSTEM_OUTPUT_H 
 
 #include "pdp_psystem.h"
-
+#include <cstddef>
 
 // TODO: Expand this general class with more common attributes and methods
 // The class for PDP system outputs
@@ -47,7 +47,9 @@ protected:
 	//char * filename;
 	
 public:
+
 	virtual bool write_configuration(unsigned int* config_multisets, char * config_charges, int sim, int step, char** objstrings)=0;
+	virtual bool write_configuration_filtered(unsigned int* filtered_multisets, char * config_charges, int sim, int step, char** objstrings)=0;
 };
 
 

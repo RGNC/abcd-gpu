@@ -27,7 +27,7 @@
 
 #include "pdp_psystem_source_binary.h"
 #include <string.h>
-
+#include <regex>
 using namespace std;
 
 /**********************************************************/
@@ -36,7 +36,7 @@ using namespace std;
 /* Binary reader of a PDP System: maravillosos procedures */
 /**********************************************************/
 
-PDP_Psystem_source_binary::PDP_Psystem_source_binary(const char * filename, Options options) {
+PDP_Psystem_source_binary::PDP_Psystem_source_binary(const char * filename, Options options, string& filter_file) {
 	this->options=options;
 
 	// Next is not used yet
@@ -70,10 +70,13 @@ PDP_Psystem_source_binary::PDP_Psystem_source_binary(const char * filename, Opti
 	
 	/************************************/
 	/* Open the input file as binary */
-	is.open (filename, ios::binary);
+	//is.open (filename, ios::binary);
 
 	/* If couldn't open it, error*/
-	check_file_error(is.fail(), string("Couldn't open binary file ") + filename, is);
+	//check_file_error(is.fail(), string("Couldn't open binary file ") + filename, is);
+
+	this->filename = filename;
+	filter_filename=filter_file;
 }
 
 PDP_Psystem_source_binary::PDP_Psystem_source_binary(Options options) {
@@ -85,6 +88,7 @@ PDP_Psystem_source_binary::~PDP_Psystem_source_binary() {
 	if (!is.fail() && is.good() && is.is_open())
 		is.close();
 	
+
 	if (delete_id_objects&&id_objects) {
 	    for (int i=0;i<options->num_objects;i++) {
 		if (id_objects[i]) delete [] id_objects[i];
@@ -126,6 +130,12 @@ PDP_Psystem_source_binary::~PDP_Psystem_source_binary() {
 	    delete [] ini_multiset;
 	}
 	if (ini_charge) delete []ini_charge;
+
+	if(options->output_filter) delete []options->output_filter;
+	if(options->modules_end) delete [] options->modules_end;
+	if(options->modules_start) delete [] options->modules_start;
+	if(options->modules_pi_index) delete [] options->modules_pi_index;
+	if(options->modules_env_index) delete [] options->modules_env_index;
 }
 
 
@@ -331,9 +341,16 @@ bool PDP_Psystem_source_binary::read_global_sizes() {
 #define PREC_NUM_RULES(byte) (1<<(((byte)&0xC)>>2))
 #define DIF_PROB_ENV(byte) !(((byte)&0x2)>>1)
 #define SHOW_PARENT_MEMBRANE(byte) ((byte)&0x1)
-#define CHARGE_ALPHA(charge) ((charge&0xC0)>>6)
-#define CHARGE_BETA(charge) ((charge&0x30)>>4)
 
+char PDP_Psystem_source_binary::charge_alpha(char charge)
+{return ((charge&0xC0)>>6);}
+char PDP_Psystem_source_binary::load_charge_alpha(char charge)
+{return ((charge&0x3)<<6);}
+
+char PDP_Psystem_source_binary::charge_beta(char charge)
+{return ((charge&0x30)>>4);}
+char PDP_Psystem_source_binary::load_charge_beta(char charge)
+{return ((charge&0x3)<<4);}
 
 bool PDP_Psystem_source_binary::read_inf_1() {
 #ifdef BIN_DEBUG
@@ -373,8 +390,8 @@ bool PDP_Psystem_source_binary::read_inf_1() {
 	cout << "\tNo Rules="<<rules[i+1]-rules[i]<<endl;
 	cout << "\tLength LHS="<<lengthU[i]<<endl;
 	cout << "\tAMembrane="<<active_membrane[i]<<endl;
-	cout << "\tCharges Alf="<<CHARGE_ALPHA(charge[i])<<endl;
-	cout << "\tCharges Bet="<<CHARGE_BETA(charge[i])<<endl;
+	cout << "\tCharges Alf="<<charge_alpha(charge[i])<<endl;
+	cout << "\tCharges Bet="<<charge_beta(charge[i])<<endl;
 #endif
     }
     
@@ -480,7 +497,7 @@ bool PDP_Psystem_source_binary::read_inf_2() {
 		for (int o=0; o<lengthV[i]; o++) {
 			cout << id_objects[obj_lhs[o_it]]/*obj_lhs[o_it]*/ << "*" << obj_lhs_m[o_it] << " ";o_it++;
 		}
-		cout <<"]^" << CHARGE_ALPHA(charge[i]) << "_" << active_membrane[i] << endl;
+		cout <<"]^" << charge_alpha(charge[i]) << "_" << active_membrane[i] << endl;
 	#endif
     }
     
@@ -556,7 +573,7 @@ bool PDP_Psystem_source_binary::read_inf_3() {
 	    for (int o=0; o<lengthVp[r]; o++) {
 		cout << id_objects[obj_rhs[o_it]]/*obj_lhs[o_it]*/ << "*" << obj_rhs_m[o_it] << " ";o_it++;
 	    }
-	    cout <<"]^" << CHARGE_BETA(charge[i]) << "_" << active_membrane[i] << endl;
+	    cout <<"]^" << charge_beta(charge[i]) << "_" << active_membrane[i] << endl;
 #endif
 	}
     }
@@ -594,23 +611,24 @@ bool PDP_Psystem_source_binary::read_multisets() {
     ini_multiset = new unsigned int* [options->num_environments*options->num_membranes];
     ini_info = new unsigned int [options->num_environments*options->num_membranes];
     ini_charge = new char [options->num_environments*options->num_membranes];
-    
+
+
     for (int e=0; e<options->num_environments; e++) {
-	for (int q=0; q<options->num_membranes; q++) {
-		ini_charge[INI_OFFSET(e,q)] = read_bytes(is,1);
-	    unsigned int num_objs = ini_info[INI_OFFSET(e,q)] = read_bytes(is,precision.ini_num_objects);
-	    //int num_objs=INITIAL_NUMBER_OBJECTS(ini_info[INI_OFFSET(e,q)]);
-	    
-	    if (num_objs<=0) ini_multiset[INI_OFFSET(e,q)]=NULL;
-	    else ini_multiset[INI_OFFSET(e,q)]=new unsigned int [num_objs*2];
-	    
-	    for (int o=0;o<num_objs;o++) {
-		int obj=read_bytes(is,precision.objects);
-		int mult=read_bytes(is,precision.ini_mult);
-		ini_multiset[INI_OFFSET(e,q)][o*2]=obj;
-		ini_multiset[INI_OFFSET(e,q)][o*2+1]=mult;
-	    }	    
-	}
+		for (int q=0; q<options->num_membranes; q++) {
+			ini_charge[INI_OFFSET(e,q)] = read_bytes(is,1);
+			unsigned int num_objs = ini_info[INI_OFFSET(e,q)] = read_bytes(is,precision.ini_num_objects);
+			//int num_objs=INITIAL_NUMBER_OBJECTS(ini_info[INI_OFFSET(e,q)]);
+
+			if (num_objs<=0) ini_multiset[INI_OFFSET(e,q)]=NULL;
+			else ini_multiset[INI_OFFSET(e,q)]=new unsigned int [num_objs*2];
+
+			for (int o=0;o<num_objs;o++) {
+				int obj=read_bytes(is,precision.objects);
+				int mult=read_bytes(is,precision.ini_mult);
+				ini_multiset[INI_OFFSET(e,q)][o*2]=obj;
+				ini_multiset[INI_OFFSET(e,q)][o*2+1]=mult;
+			}
+		}
     }
     
 #ifdef BIN_DEBUG
@@ -618,7 +636,7 @@ bool PDP_Psystem_source_binary::read_multisets() {
 	cout << "Env "<<e<<endl;
 	for (int q=0; q<options->num_membranes; q++) {
 	    //cout << "\tMembr "<<q<<" ("<<INITIAL_NUMBER_OBJECTS(ini_info[INI_OFFSET(e,q)])<<" #objects):";
-		cout << "\tMembr "<<q<<" (charge: " << CHARGE_ALPHA(ini_charge[INI_OFFSET(e,q)]) << ", "<<ini_info[INI_OFFSET(e,q)]<<" #objects):";
+		cout << "\tMembr "<<q<<" (charge: " << charge_alpha(ini_charge[INI_OFFSET(e,q)]) << ", "<<ini_info[INI_OFFSET(e,q)]<<" #objects):";
 	    //for (int o=0;o<(INITIAL_NUMBER_OBJECTS(ini_info[INI_OFFSET(e,q)]))*2;o+=2) {
 		for (int o=0;o<(ini_info[INI_OFFSET(e,q)])*2;o+=2) {
 		cout << id_objects[ini_multiset[INI_OFFSET(e,q)][o]] <<"*"
@@ -633,31 +651,257 @@ bool PDP_Psystem_source_binary::read_multisets() {
     
     return true;
 }
+//Filter
+bool PDP_Psystem_source_binary::read_filter() {
+	ifstream fis;
+	string line;
 
 
 
+	if (filter_filename==""){
+		//No filtering at all
+		return true;
+	}
+	/* Open the input file as read only */
+	fis.open (filter_filename.c_str(), ios::in);
+
+	if(fis.fail()){
+		cout << "Error on filter file: " << filter_filename.c_str() << endl;
+	}else{
+		unsigned int filter_length=options->num_environments*options->num_membranes*options->num_objects;
+		options->output_filter=new unsigned int[filter_length];
+		options->objects_to_output=0;
+
+		//Set filter to 0
+		for(int i=0;i<filter_length;i++){
+			options->output_filter[i]=0;
+		}
+
+
+		std::cmatch cm;    // same as std::match_results<const char*> cm;
+		std::regex e ("^(-|\\d+) (-|\\d+) (-|\\d+|.+)$");
+		//Start reading and get the values we want to save
+		 while ( getline (fis,line) )
+		 {
+
+			 int env=0;
+			 int mem=0;
+			 int obj=0;
+			 int flags=0;
+
+			 std::regex_match (line.c_str(),cm,e);
+
+			 if(cm.size()!=4){
+				 //One global match and three matches for each part, otherwise is not correct
+				 continue;
+			 }
+
+			 //Check if save for each environment
+			 if(cm[1] == "-"){
+				 //Advance the pointer two positions (- character and whitespace)
+				 flags+=1<<2;
+			 }else {
+				 //Extract the environment
+				 env=atoi(cm[1].str().c_str());
+			 }
+
+
+			 //Check if save for each membrane
+			 if(cm[2] == "-"){
+				 //Advance the pointer two positions (- character and whitespace)
+				 flags+=1<<1;
+			 }else{
+				 //Extract the membrane
+				 mem=atoi(cm[2].str().c_str());
+			 }
+
+
+			 //Check if save for each object
+			 if(cm[3] == "-"){
+				 flags+=1;
+			 }else{
+				 //Extract the object
+				 const char * pStart=cm[3].str().c_str();
+				 char * pEnd;
+				 obj=strtol(pStart,&pEnd,10);
+
+				 //If is not an integer id, but a string, find its index
+				 if(pStart==pEnd){
+					 obj=obj_str_to_id(pStart);
+				 }
+			 }
+
+			 set_object_to_save(env,mem,obj,flags);
+
+		 }
+
+		//Say we have [0 1 1 0 0 1]
+		//We will transform this into [1 2 5] (Inclusive scan)
+		//Copy the first part of the array and free the rest
+		unsigned int* filter_indexes=new unsigned int [options->objects_to_output];
+		int index=0;
+		for(int i=0;i<filter_length;i++){
+			if (options->output_filter[i] != 0){
+				filter_indexes[index++] = i;
+			}
+		}
+
+		//Free that large chunk of memory
+		delete [] options->output_filter;
+
+		//And use the small one
+		options->output_filter=filter_indexes;
+
+//		for(int i=0;i<options->objects_to_output;i++){
+//			cout << "Detected object index " <<options->output_filter[i] << endl;
+//		}
+		cout << "Detected " << options->objects_to_output << " objects to be output" << endl;
+
+	}
+    if (!fis.fail() && fis.good() && fis.is_open())
+    	fis.close();
+
+    return true;
+}
+//TODO: a not efficient loop to find the objects, might take another approach
+int PDP_Psystem_source_binary::obj_str_to_id(const char* obj_string){
+	int id=-1;
+
+	for(int i=0;i<options->num_objects;i++){
+		if(strcmp(obj_string,id_objects[i])==0)
+		{
+			id=i;
+			break;
+		}
+	}
+	return id;
+}
+int PDP_Psystem_source_binary::check_object(int env,int mem,int obj){
+	int objectIndex=-1;
+	if(env>=0 && env<options->num_environments
+			&& mem>=0 && mem<options->num_membranes
+			&& obj>=0 && obj<options->num_objects){
+		objectIndex=env*options->num_membranes*options->num_objects
+				+mem*options->num_objects
+				+obj;
+	}
+
+	return objectIndex;
+}
+
+void PDP_Psystem_source_binary::set_object_to_save(int env,int mem,int obj,int flags){
+	 //Identify the index of the object and detect possible out of bounds
+	 int object_index=check_object(env,mem,obj);
+
+	 if(object_index==-1){
+		 //There was an error
+		 cout << "Detected invalid object (" << env << ", "<<mem<<", "<< obj << ")" << endl;
+	 }else{
+		 //The object we want to save is correct, so we mark it
+		 switch(flags){
+			case 0:
+				//Only specified object
+				set_object(object_index);
+				break;
+			case 1:
+				//All objects
+				for (unsigned int o=0; o<options->num_objects;o++) {
+					set_object(object_index+o);
+				}
+				break;
+			case 2:
+				//All membranes
+				for (int m=0;m<options->num_membranes;m++) {
+					set_object(object_index+m*options->num_objects);
+				}
+				break;
+			case 3:
+				//All membranes, all objects
+				for (int m=0;m<options->num_membranes;m++) {
+					for (unsigned int o=0; o<options->num_objects;o++) {
+						set_object(object_index+m*options->num_objects+o);
+					}
+				}
+				break;
+			case 4:
+				//All environments
+				for (int e=0;e<options->num_environments;e++) {
+					set_object(object_index
+							+e*options->num_objects*options->num_membranes);
+				}
+				break;
+			case 5:
+				//All environments, all objects
+				for (int e=0;e<options->num_environments;e++) {
+					for (unsigned int o=0; o<options->num_objects;o++) {
+						set_object(object_index
+								+e*options->num_objects*options->num_membranes
+								+o);
+					}
+				}
+				break;
+			case 6:
+				//All environments, all membranes
+				for (int e=0;e<options->num_environments;e++) {
+					for (int m=0;m<options->num_membranes;m++) {
+						set_object(object_index
+								+e*options->num_objects*options->num_membranes
+								+m*options->num_objects);
+					}
+				}
+				break;
+			case 7:
+				//That would mean no filter, so nothing for this
+				break;
+			default:
+				break;
+		 }
+
+
+	 }
+
+}
+void PDP_Psystem_source_binary::set_object(int object_index){
+	if(options->output_filter[object_index]==0){
+		options->output_filter[object_index]=1;
+		options->objects_to_output++;
+	}
+}
 /*******************************************************/
 /* Public methods inherited from pdp_system_source */
 /*******************************************************/
 
 bool PDP_Psystem_source_binary::start() {
-	
-    try {
-	read_header();
-	
-	read_global_sizes();
-	
-	read_inf_1();
-	
-	read_inf_2();
-	
-	read_inf_3();
-	
-	read_multisets();
-	
+
+	if (options->verbose>0)
+		cout << "Reading binary file using specific format (revision 16-09-2014)" << endl;
+
+    try {    
+		/*********************************/
+	    /* Open the input file as binary */
+	    is.open (filename, ios::binary);
+
+	    /* If couldn't open it, error*/
+	    check_file_error(is.fail(), string("Couldn't open binary file ") + filename, is);
+	    /********************************/
+	    
+		read_header();
+		
+		read_global_sizes();
+		
+		read_inf_1();
+		
+		read_inf_2();
+		
+		read_inf_3();
+		
+		read_multisets();
+		
+		read_filter();
+
     } catch (FileException fe) {
-	cerr << fe.getMessage() << endl;
-	return false;
+		cerr << fe.getMessage() << endl;
+		return false;
     }   
     
     return true;
@@ -688,7 +932,7 @@ unsigned int PDP_Psystem_source_binary::pi_loop_lhs() {
 }
 
 char PDP_Psystem_source_binary::pi_lhs_charge() {
-    return CHARGE_ALPHA(this->charge[rule_block_it]);
+    return charge_alpha(this->charge[rule_block_it]);
 }
 
 unsigned int PDP_Psystem_source_binary::pi_lhs_membrane() {
@@ -755,7 +999,7 @@ unsigned int PDP_Psystem_source_binary::pi_loop_rhs() {
 }
 
 char PDP_Psystem_source_binary::pi_rhs_charge() {
-    return CHARGE_BETA(this->charge[rule_block_it]);
+    return charge_beta(this->charge[rule_block_it]);
 }
 
 unsigned int PDP_Psystem_source_binary::pi_rhs_membrane() {
@@ -907,7 +1151,7 @@ unsigned int PDP_Psystem_source_binary::conf_parent_membrane() {
 
 char PDP_Psystem_source_binary::conf_charge_membrane() {
     //return INITIAL_CHARGE(ini_info[INI_OFFSET(env_it,memb_it)]);
-	return CHARGE_ALPHA(ini_charge[INI_OFFSET(env_it,memb_it)]);
+	return charge_alpha(ini_charge[INI_OFFSET(env_it,memb_it)]);
 }
 
 unsigned int PDP_Psystem_source_binary::conf_loop_objects() {
@@ -917,7 +1161,7 @@ unsigned int PDP_Psystem_source_binary::conf_loop_objects() {
 
 bool PDP_Psystem_source_binary::conf_next_object(unsigned int & object, unsigned int & multiplicity) {
     //if (obj_it<INITIAL_NUMBER_OBJECTS(ini_info[INI_OFFSET(env_it,memb_it)])*2-1) {
-	if (ini_info[INI_OFFSET(env_it,memb_it)]==NULL) return false;
+	if (ini_info[INI_OFFSET(env_it,memb_it)]==0) return false;
 
 	if (obj_it<ini_info[INI_OFFSET(env_it,memb_it)]*2-1) {
 		object=ini_multiset[INI_OFFSET(env_it,memb_it)][obj_it];

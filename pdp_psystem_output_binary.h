@@ -75,6 +75,7 @@ public:
 	}
 
 	bool write_configuration(unsigned int* config_multisets,char * config_charges, int sim, int step, char** objstrings=NULL);
+	bool write_configuration_filtered(unsigned int* filtered_multisets,char * config_charges, int sim, int step, char** objstrings=NULL);
 };
 
 

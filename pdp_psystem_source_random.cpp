@@ -34,7 +34,7 @@
 using namespace std;
 
 #define MAX_MULTIPLICITY 5
-
+#define PI_OBJ 0.75
 /* Random generator of a PDP P System: maravillosos procedures */
 PDP_Psystem_source_random::PDP_Psystem_source_random(Options options) {
 	this->options=options;
@@ -62,9 +62,24 @@ PDP_Psystem_source_random::~PDP_Psystem_source_random() {
 	delete []env_lengthU;
 	delete []lengthUp;
 	delete []lengthVp;
+	delete []env_env;
+	delete []env_obj;
 }
 
 bool PDP_Psystem_source_random::start() {
+	mutree=new unsigned int [options->num_membranes-1];
+	//Membrane 1's parent is the environment
+	mutree[0]=0;
+	//Membrane (i+1)'s parent is random from 1 to i
+	for (int i=1;i<options->num_membranes-1;i++){
+		mutree[i]=random()%(i) +1;
+		//cout<<"membrane "<< i+1<< " has parent:" <<mutree[i]<< endl;
+	}
+
+	//
+	env_env= new uint[options->num_blocks_env];
+	env_obj= new uint[options->num_blocks_env];
+
 	lengthU= new short int[options->num_rule_blocks];
 	for (int i=0;i<options->num_rule_blocks;i++)
 		lengthU[i]=0;
@@ -127,21 +142,22 @@ unsigned int PDP_Psystem_source_random::pi_loop_lhs() {
 	if (lengthV[rule_block_it]+lengthU[rule_block_it]==0) {
 		lengthV[rule_block_it]=random() % (options->max_lhs-1) + 1;
 		lengthU[rule_block_it]=random() % (options->max_lhs-lengthV[rule_block_it]);
+		active_membrane[rule_block_it]=random() % (options->num_membranes-1) +1;
 	}
 	return lengthV[rule_block_it]+lengthU[rule_block_it];
 }
 
 char PDP_Psystem_source_random::pi_lhs_charge() {
-	return 0;
+	return 0;//random()%3;
 }
 
 unsigned int PDP_Psystem_source_random::pi_lhs_membrane() {
-	active_membrane[rule_block_it]=random() % (options->num_membranes-1) +1;
+
 	return active_membrane[rule_block_it];
 }
 
 unsigned int PDP_Psystem_source_random::pi_lhs_parent_membrane() {
-	return 0;
+	return mutree[active_membrane[rule_block_it]-1];
 }
 
 unsigned int PDP_Psystem_source_random::pi_lhs_loop_U() {
@@ -155,6 +171,16 @@ unsigned int PDP_Psystem_source_random::pi_lhs_loop_V() {
 }
 
 bool PDP_Psystem_source_random::pi_lhs_next_object(unsigned int & object, unsigned int & multiplicity) {
+	//20% objects reserved for environment
+	//LHS can be any object in v, but only the 80% in u
+	bool pi_segment=U_it>lengthU[rule_block_it];
+
+	int obj_segment=pi_segment?
+			options->num_objects:
+			(options->num_objects*PI_OBJ);
+	int obj_offset=	0;
+
+
 	int oidx=0;
 	if (U_it<lengthU[rule_block_it]) {
 		oidx=U_it++;
@@ -165,8 +191,7 @@ bool PDP_Psystem_source_random::pi_lhs_next_object(unsigned int & object, unsign
 	else {
 		return false;
 	}
-
-	unsigned int obj=random() % options->num_objects;
+	unsigned int obj=(random() % obj_segment) + obj_offset;
 	bool rep=false;
 
 	do {
@@ -174,7 +199,7 @@ bool PDP_Psystem_source_random::pi_lhs_next_object(unsigned int & object, unsign
 		for (int aux=0;aux<oidx;aux++) {
 			if (obj_lhs[aux]==obj) {
 				rep=true;
-				obj=random() % options->num_objects;
+				obj=(random() % obj_segment) + obj_offset;
 				break;
 			}
 		}
@@ -230,7 +255,7 @@ unsigned int PDP_Psystem_source_random::pi_loop_rhs() {
 }
 
 char PDP_Psystem_source_random::pi_rhs_charge() {
-	return 0;
+	return 0;//random()%3;
 }
 
 unsigned int PDP_Psystem_source_random::pi_rhs_membrane() {
@@ -248,6 +273,10 @@ unsigned int PDP_Psystem_source_random::pi_rhs_loop_V() {
 }
 
 bool PDP_Psystem_source_random::pi_rhs_next_object(unsigned int & object, unsigned int & multiplicity) {
+	//RHS can be any object
+	int obj_segment=options->num_objects;
+	int obj_offset=0;
+
 	int oidx=0;
 	if (Up_it<lengthUp[rule_block_it*options->max_num_rules+rule_it]) {
 		oidx=Up_it++;
@@ -259,7 +288,7 @@ bool PDP_Psystem_source_random::pi_rhs_next_object(unsigned int & object, unsign
 		return false;
 	}
 
-	unsigned int obj=random() % options->num_objects;
+	unsigned int obj=(random() % obj_segment) + obj_offset;
 	bool rep=false;
 
 	do {
@@ -267,7 +296,7 @@ bool PDP_Psystem_source_random::pi_rhs_next_object(unsigned int & object, unsign
 		for (int aux=0;aux<oidx;aux++) {
 			if (obj_rhs[aux]==obj) {
 				rep=true;
-				obj=random() % options->num_objects;
+				obj=(random() % obj_segment) + obj_offset;
 				break;
 			}
 		}
@@ -300,11 +329,31 @@ bool PDP_Psystem_source_random::env_next_rule_block() {
 }
 
 unsigned int PDP_Psystem_source_random::env_get_object_lhs() {
-	return random() % options->num_objects + 1;
+	return env_obj[block_env_it];
 }
 
 unsigned int PDP_Psystem_source_random::env_get_environment() {
-	return random() % options->num_environments;
+	//LHS env rules can only be 25%
+	int obj_segment=(options->num_objects-(options->num_objects*PI_OBJ));
+	int obj_offset=(options->num_objects*PI_OBJ);
+
+	uint next_object=(random() % obj_segment)+obj_offset;
+	uint next_env=random() % options->num_environments;
+	bool rep=false;
+	do{
+		rep=false;
+		for (int i=0;i<block_env_it;i++){
+			if(env_obj[i]==next_object && env_env[i]==next_env) {
+					rep=true;
+					next_object=(random() % obj_segment)+obj_offset;
+					next_env=random() % options->num_environments;
+			}
+		}
+	}while(rep);
+
+	env_obj[block_env_it]=next_object;
+	env_env[block_env_it]=next_env;
+	return next_env;
 }
 
 unsigned int PDP_Psystem_source_random::env_loop_rules() {
@@ -352,8 +401,11 @@ unsigned int PDP_Psystem_source_random::env_loop_rhs() {
 bool PDP_Psystem_source_random::env_next_object(unsigned int & object, unsigned int & environment) {
 
 	if (Up_it<env_lengthU[rule_env_it]) {
+		//RHS for env rules can be any object
+		int obj_segment=options->num_objects;
+		int obj_offset=0;
 		Up_it++;
-		object=random() % options->num_objects;
+		object=(random() % obj_segment)+obj_offset;
 		environment=random() % options->num_environments;
 		return true;
 	}
@@ -409,7 +461,10 @@ unsigned int PDP_Psystem_source_random::conf_loop_objects() {
 bool PDP_Psystem_source_random::conf_next_object(unsigned int & object, unsigned int & multiplicity) {
 	if (obj_it<options->num_objects) {
 		object=obj_it;
-		multiplicity=random()%100;
+		//If random number is greater than the value specified,
+		//the object will not be in the initial configuration
+		//E.g.: objects_init_config=0.8f, so 20% of objects won't be in the init config
+		multiplicity=random()<(options->objects_init_config*RAND_MAX)?random()%100:0;
 		obj_it++;
 		return true;
 	}

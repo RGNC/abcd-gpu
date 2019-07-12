@@ -106,13 +106,13 @@ private:
 	bool run_parallel_sim(int time);
 
 	/* Micro phases */
-	bool selection_phase1(int simulation, int stid);
-	bool selection_phase2(int simulation, int stid);
-	bool selection_phase3(int simulation, int stid);
+	bool selection_phase1(int simulation, int stid, int step);
+	bool selection_phase2(int simulation, int stid, int step);
+	bool selection_phase3(int simulation, int stid, int step);
 
 	/* Main phases */
-	int selection(int simulation, int stid);
-	int execution(int simulation, int stid);
+	int selection(int simulation, int stid, int step);
+	int execution(int simulation, int stid, int step);
 	
 	
 	/***************************************************************/
@@ -175,6 +175,9 @@ private:
 
 		return false;
 	}
+
+	/* Auxiliary function for modules, returns if the loop where this function is used should be broken */
+	bool module_start_end (uint & start, uint & end, int m, bool pirules, int step);
 };
 
 #endif

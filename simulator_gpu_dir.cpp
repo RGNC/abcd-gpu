@@ -51,7 +51,7 @@
 using namespace std;
 
 
-void Simulator_gpu_dir::gold_selection_phase1_acu() {
+void Simulator_gpu_dir::gold_selection_phase1_acu(uint step=0) {
 	if (options->verbose>0)
 	cout << endl << "--------------------------" << endl
 	<< "Launching CPU code for phase 1: " << endl;
@@ -271,7 +271,7 @@ void Simulator_gpu_dir::gold_selection_phase1_acu() {
 	
 }
 
-void Simulator_gpu_dir::gold_selection_phase1() {
+void Simulator_gpu_dir::gold_selection_phase1(uint step=0) {
 	if (options->verbose>0)
 	cout << endl << "--------------------------" << endl
 	<< "Launching CPU code for phase 1: " << endl;
@@ -474,7 +474,7 @@ void Simulator_gpu_dir::gold_selection_phase1() {
 }
 
 
-void Simulator_gpu_dir::gold_selection_phase2() {
+void Simulator_gpu_dir::gold_selection_phase2(uint step=0) {
 	
 	if (options->verbose>0)
 	cout << endl << "--------------------------" << endl <<
@@ -544,7 +544,7 @@ void Simulator_gpu_dir::gold_selection_phase2() {
 
 }
 
-void Simulator_gpu_dir::gold_selection_phase3() {
+void Simulator_gpu_dir::gold_selection_phase3(uint step=0) {
 	//unsigned int etid=(mode==1)?0:omp_get_thread_num();
 
 	if (options->verbose>0)
@@ -663,7 +663,7 @@ void Simulator_gpu_dir::gold_selection_phase3() {
 }
 
 
-unsigned int Simulator_gpu_dir::gold_execution() {
+unsigned int Simulator_gpu_dir::gold_execution(uint step=0) {
 	/* PHASE 4: EXECUTION */
 	/* For each environemnt */
 

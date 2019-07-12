@@ -27,8 +27,8 @@
 
 #include "pdp_psystem_source.h"
 
-#ifndef __PDP_p_system__
-#define __PDP_p_system__
+#ifndef __PDP_system__
+#define __PDP_system__
 
 /* Top class storing information about the P system */
 class PDP_Psystem {
