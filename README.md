@@ -27,7 +27,7 @@ The new innovation in version 1.0 is an input module which supports files with a
 The results show that with this real ecosystem model, phase 1 of DCBA is the bottleneck, since there is no competing blocks, what effectively disable phase 2 in the simulation. Moreover, we have shown that next generation GPUs, such as K40, achieves better performance, given their higher memory bandwidth and their L2 caches. For example, phases 1 and 4, which are the most data intensive in DCBA, are 10 times faster in K40 than in its predecessor, demonstrating our theory that P system simulations are memory bandwidth bounded.
 
 ## 2.1 Adaptative Simulators ###
-Latest developments have been focused on improving the performance of both OpenMP and CUDA simulators. According to the design protocol of ecosystem modelling using PDP systems, modules are defined. An extension to the simulators have been developed where modules are handled in order to reduce internal loops and increase parallelism. Experiments show a great increase  of performance. For this purpose, [P-lingua 5](https://github.com/RGNC/plingua) has to be used.
+Latest developments have been focused on improving the performance of both OpenMP and CUDA simulators. According to the design protocol of ecosystem modelling using PDP systems, modules are defined. An extension to the simulators have been developed where modules are handled in order to reduce internal loops and increase parallelism. Experiments show a great increase  of performance (around 2 - 2.9x). For this purpose, [P-lingua 5](https://github.com/RGNC/plingua) provides the input to the system given that it was extended to support features, that is, high-level information provided by the users.
 
 
 ----------
@@ -46,10 +46,10 @@ Latest developments have been focused on improving the performance of both OpenM
 
 ### 3.2. Installation ###
 
-  a. Install all the required packages discussed in Section 2.1.
-  b. Inside the folder of CUDA SDK samples, create a new folder named 8_pmcgpu.
-  c. Extract the contents of files abcd-gpu-adaptative-1.0b.tar.gz and counterslib.tar.gz inside this new folder.
-  d. Go to folder adapatative-1.0b, and type "make". You should see the binary file inside the folder.
+  - a. Install all the required packages discussed in Section 2.1.
+  - b. Inside the folder of CUDA SDK samples, create a new folder named 8_pmcgpu.
+  - c. Extract the contents of files abcd-gpu-adaptative-1.0b.tar.gz and counterslib.tar.gz inside this new folder.
+  - d. Go to folder adapatative-1.0b, and type "make". You should see the binary file inside the folder.
 
 
 ### 3.3 Usage ###
@@ -73,6 +73,7 @@ Examples:
 
 ### 4.1. Journals ###
 
+* Miguel Ángel Martínez-del-Amor, Ignacio Pérez-Hurtado, David Orellana-Martín, Mario J. Pérez-Jiménez. **Adaptative parallel simulators for bioinspired computing models**. Pending.
 * Miguel Ángel Martinez-del-Amor, Luis Felipe Macías-Ramos, Luis Valencia-Cabrera, Mario J. Pérez--Jiménez. **Parallel simulation of Population Dynamics P systems: Updates and roadmap**. *Natural Computing*, 15, 4 (2016), 565-573.
 * Miguel A. Martínez-del-Amor, Ignacio Pérez-Hurtado, Adolfo Gastalver-Rubio, Anne C. Elster, Mario J. Pérez-Jiménez. **Population Dynamics P Systems on CUDA**, *Lecture Notes in Bioinformatics*, 7605 (2012), 247-266.
 
