@@ -88,11 +88,11 @@ Read the howto.pdf (extract from Miguel A. Martínez-del-Amor's thesis) for futh
 
 If you intend to create a branch of ABCD-GPU, or use its produced results, please consider citing the following publications:
 
-  * M.A. Martínez-del-Amor, L.F. Macías-Ramos, L. Valencia-Cabrera, M.J. Pérez-Jiménez. Parallel simulation of Population Dynamics P systems: updates and roadmap. Natural Computing, 15, 4 (2016), 565-573.*
+  * M.A. Martínez-del-Amor, L.F. Macías-Ramos, L. Valencia-Cabrera, M.J. Pérez-Jiménez. Parallel simulation of Population Dynamics P systems: updates and roadmap. Natural Computing, 15, 4 (2016), 565-573.
 
-  * Miguel A. Martínez-del-Amor, Ignacio Pérez-Hurtado, Adolfo Gastalver-Rubio, Anne C. Elster, Mario J. Pérez-Jiménez. Population Dynamics P Systems on CUDA, Lecture Notes in Bioinformatics, 7605 (2012), 247-266.*
+  * Miguel A. Martínez-del-Amor, Ignacio Pérez-Hurtado, Adolfo Gastalver-Rubio, Anne C. Elster, Mario J. Pérez-Jiménez. Population Dynamics P Systems on CUDA, Lecture Notes in Bioinformatics, 7605 (2012), 247-266.
 
-  * Miguel A. Martínez-del-Amor, Ian Karlin, Rune E. Jensen, Mario J. Pérez-Jiménez, Anne C. Elster. Parallel Simulation of Probabilistic P Systems on Multicore Platforms, Tenth Brainstorming Week on Membrane Computing, Vol. II (2012), 17-26.*
+  * Miguel A. Martínez-del-Amor, Ian Karlin, Rune E. Jensen, Mario J. Pérez-Jiménez, Anne C. Elster. Parallel Simulation of Probabilistic P Systems on Multicore Platforms, Tenth Brainstorming Week on Membrane Computing, Vol. II (2012), 17-26.
 
 ----------
 ## 7. Funding ##
