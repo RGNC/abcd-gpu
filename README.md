@@ -27,18 +27,52 @@ The new innovation in version 1.0 is an input module which supports files with a
 The results show that with this real ecosystem model, phase 1 of DCBA is the bottleneck, since there is no competing blocks, what effectively disable phase 2 in the simulation. Moreover, we have shown that next generation GPUs, such as K40, achieves better performance, given their higher memory bandwidth and their L2 caches. For example, phases 1 and 4, which are the most data intensive in DCBA, are 10 times faster in K40 than in its predecessor, demonstrating our theory that P system simulations are memory bandwidth bounded.
 
 ----------
-## 3. Publications ##
+## 3. Installation and how to use ##
 
-### 3.1. Journals ###
+### 3.1. Requirements and dependencies ###
+
+  - A Linux based distribution (only Ubuntu has been tested; maybe a Windows system with cygwin could work, but has not been tested).
+  - A CUDA installation, from version 5.5, including: 
+     * NVIDIA toolkit, its associated libraries, and the nvcc compiler.
+     * Configure LD_LIBRARY_PATH to contain the CUDA lib(64) folder, e.g. in .bashrc, add "export LD_LIBRARY_PATH=/usr/local/cuda/lib"
+     * CUDA SDK examples.
+  - The GNU g++ compiler
+  - The GNU Scientific Library (GSL). E.g. apt-get install gsl-bin libgsl0-dev
+  - Electric Fence, in order to debug the simulator.
+  - The counterslib library, available with PMCGPU, inside the folder 8_pmcgpu 
+
+### 3.2. Installation ###
+
+  a. Install all the required packages from 2.1.
+  b. Inside the folder of CUDA SDK samples, create a new folder named 8_pmcgpu.
+  c. Extract the contents of files abcd-gpu-1.0b.tar.gz and counterslib.tar.gz inside this new folder.
+  d. Go to folder abcd-gpu-1.0b, and type "make". You should see the binary file inside the folder.
+
+### 3.3 Usage ###
+
+Type ./abcdgpu -h to list the different options. In this version, input files of binary format and randomly generated PDP systems are supported.
+
+  * A random PDP system sequential simulation: ./abcdgpu -X 2
+  * A random PDP system (OpenMP) parallel simulation using 4 CPU cores: export OMP_NUM_THREADS=4; ./abcdgpu -X 2
+  * A random PDP system (CUDA) parallel simulation: ./abcdgpu -X 2 -I 1
+  * A random PDP system profiling execution (CPU vs GPU): ./abcdgpu -X 2 -I 1 -M 1
+  * A profiling execution (CPU vs GPU) for a random PDP system with 100000 rule blocks, 1000 objects in the alphabet, q degree of 4, maximum of 5 rules per block, and maximum of 3 objects in LHS membranes using 100 simulations, 20 environments (m degree) and 1 step: ./abcd -I 1 -M 1 -R -b 100000 -o 1000 -q 4 -r 5 -l 3 -s 100 -e 20 -t 1
+  * A profiling execution (CPU vs GPU) for the Bearded Vulture model (in plingua folder, previously generated from the .pli file), using 1000 simulations, 42 steps, 3 steps per cycle, verbosity 1: ./abcdgpu -f plingua/bv_model_bwmc12.bin -s 1000 -t 42 -I 1 -M 1 -v 1 -c 3
+  * A simulation of the Bearded Vulture model on the GPU using 100 simulations, 42 steps, 3 steps per cycle, verbosity 1, and the output of a csv (which will be named after the input file plus the extension of .csv): ./abcdgpu -f plingua/bv_bwmc12.bin -I 1 -s 100 -t 42 -v 1 -c 3 -O 0
+
+----------
+## 4. Publications ##
+
+### 4.1. Journals ###
 
 * Miguel Ángel Martinez-del-Amor, Luis Felipe Macías-Ramos, Luis Valencia-Cabrera, Mario J. Pérez--Jiménez. **Parallel simulation of Population Dynamics P systems: Updates and roadmap**. *Natural Computing*, 15, 4 (2016), 565-573.
 * Miguel A. Martínez-del-Amor, Ignacio Pérez-Hurtado, Adolfo Gastalver-Rubio, Anne C. Elster, Mario J. Pérez-Jiménez. **Population Dynamics P Systems on CUDA**, *Lecture Notes in Bioinformatics*, 7605 (2012), 247-266.
 
-### 3.2. Conference contributions###
+### 4.2. Conference contributions ###
 
 * Miguel A. Martínez-del-Amor, Ian Karlin, Rune E. Jensen, Mario J. Pérez-Jiménez, Anne C. Elster. **Parallel Simulation of Probabilistic P Systems on Multicore Platforms**, *Tenth Brainstorming Week on Membrane Computing*, Vol. II (2012), 17-26.
 
-### 4.3 Ph.D. Thesis###
+### 4.3 Ph.D. Thesis ###
 
 * Miguel Á. Martínez-del-Amor. [Accelerating Membrane Systems Simulators using High Performance Computing with GPU.](http://www.cs.us.es/~mdelamor/research.html#thesis) May 2013, University of Seville. Advised by Mario J. Pérez-Jiménez and Ignacio Pérez-Hurtado.
 
