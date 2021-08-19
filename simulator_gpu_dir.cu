@@ -1485,6 +1485,7 @@ __device__ inline void atomicMul(uint* address, uint value){
 /* This non-accurate version causes updating errors
 /************************************************************/
 
+/* This Kernel is deprecated, being replaced by v2 */
 __global__ void kernel_phase1_normalization(
 		PDP_Psystem_REDIX::Ruleblock ruleblock,
 		PDP_Psystem_REDIX::Configuration configuration,
@@ -1566,7 +1567,7 @@ __global__ void kernel_phase1_normalization(
 		if((d_abv[sim*options.num_environments*asize+env*asize+(block>>ABV_LOG_WORD_SIZE)]
 			        >> ((~threadIdx.x)&ABV_DESPL_MASK))
 					& 0x1) {
-//		if (d_is_active(threadIdx.x,s_abv)) {
+		//if (d_is_active(threadIdx.x,s_abv)) {
 			min=UINT_MAX;
             uint o_init=ruleblock.lhs_idx[block];
 			uint o_end=ruleblock.lhs_idx[block+1];
@@ -1589,6 +1590,7 @@ __global__ void kernel_phase1_normalization(
 	}
 }
 
+/* This Kernel is deprecated, being replaced by v2 */
 __global__ void kernel_phase1_normalization_acu (
 		PDP_Psystem_REDIX::Ruleblock ruleblock,
 		PDP_Psystem_REDIX::Configuration configuration,
@@ -2301,14 +2303,25 @@ bool Simulator_gpu_dir::selection_phase1(uint step=0) {
 
 		} else {
 
-			if (! accurate)
+			/*if (! accurate)
 			kernel_phase1_normalization <<<dimGrid,dimBlock,sh_mem,execution_stream>>> (d_structures->ruleblock,
 				d_structures->configuration, d_structures->lhs, d_structures->nr,
 				*options,d_addition,d_abv,obj_chunks);
 			else
 			kernel_phase1_normalization_acu <<<dimGrid,dimBlock,sh_mem,execution_stream>>> (d_structures->ruleblock,
 				d_structures->configuration, d_structures->lhs, d_structures->nr,
-				*options,d_denominator,d_numerator,d_ini_numerator,d_abv,obj_chunks);
+				*options,d_denominator,d_numerator,d_ini_numerator,d_abv,obj_chunks);*/
+
+			if (accurate)
+				kernel_phase1_normalization_v2<true> <<<dimGrid,dimBlock,0,execution_stream>>> (d_structures->ruleblock,
+							d_structures->configuration, d_structures->lhs, d_structures->nr,
+							d_denominator,d_numerator,d_addition,d_abv,
+							0,this->besize);
+			else
+				kernel_phase1_normalization_v2<false> <<<dimGrid,dimBlock,0,execution_stream>>> (d_structures->ruleblock,
+				d_structures->configuration, d_structures->lhs, d_structures->nr,
+				d_denominator,d_numerator,d_addition,d_abv,
+				0,this->besize);
 
 			cudaStreamSynchronize(execution_stream);
 

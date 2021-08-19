@@ -137,6 +137,7 @@ bool PDP_Psystem_source_plingua5::start() {
 	// Fetch environments labels	
 	for (int e = 0; e < number_environments; e++) {		
 		environment_labels_id[ps.structure.data[e].label[1]] = e;
+		//cout << ps.structure.data[e].label[1] << endl;
 	}
 
 	// Fetch membranes  (env0 is ps.structure.data[0], skin is .data[0])
@@ -420,7 +421,8 @@ bool PDP_Psystem_source_plingua5::start() {
 		int nr=rb.second.size();		
 		rules[rbi+1]=rules[rbi]+nr;
 		lengthU[rbi]=rb.first.second.multiset.size()+rb.first.second.membrane.multiset.size(); // u+v
-		active_membrane[rbi]=membrane_labels_id.at(rb.first.second.membrane.label[0]);
+
+		//active_membrane[rbi]=membrane_labels_id.at(rb.first.second.membrane.label[0]);
 		charge[rbi]=load_charge_alpha(transform_charge((int) rb.first.second.membrane.charge)); // alpha charge
 		charge[rbi]|=load_charge_beta(transform_charge((int) rb.second.begin()->first.rhr.data[0].charge)); // beta charge (just the one from the first rule)
 		

@@ -123,10 +123,11 @@ ALL_LDFLAGS := $(LIB)
 #GENCODE_SM13    := -gencode arch=compute_13,code=sm_13
 #GENCODE_SM20    := -gencode arch=compute_20,code=sm_20
 GENCODE_SM35    := -gencode arch=compute_35,code=\"sm_35,compute_35\"
-GENCODE_SM50    := -gencode arch=compute_50,code=\"sm_50,compute_50\"
+#GENCODE_SM50    := -gencode arch=compute_50,code=\"sm_50,compute_50\"
 GENCODE_SM61    := -gencode arch=compute_61,code=\"sm_61,compute_61\"
+GENCODE_SM75    := -gencode arch=compute_75,code=\"sm_75,compute_75\"
 GENCODE_FLAGS   := $(GENCODE_SM12) $(GENCODE_SM13) $(GENCODE_SM20)\
-	$(GENCODE_SM35) $(GENCODE_SM50) $(GENCODE_SM61)
+	$(GENCODE_SM35) $(GENCODE_SM50) $(GENCODE_SM61) $(GENCODE_SM61)
 
 
 ################################################################################
